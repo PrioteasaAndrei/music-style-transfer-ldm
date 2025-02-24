@@ -1,6 +1,7 @@
 '''
 File to create a tabular style dataset of the spectograms (images) and their corresponding labels.
 '''
+from io import BytesIO
 import sys
 from pathlib import Path
 
@@ -11,7 +12,6 @@ import pandas as pd
 # import parquet as pq
 import librosa
 import matplotlib.pyplot as plt  # added import for image saving
-
 from data.audio_processor import AudioPreprocessor
 
 
@@ -34,20 +34,29 @@ for mp3_file in mp3_files:
     chunk_size = int(CHUNK_SIZE * sr) # get #samples in 5 seconds
     # Iterate over the audio in chunks
     for i in range(0, len(audio), chunk_size):
-        # print(f"  Processing chunk starting at sample {i}")  # print chunk info
         chunk = audio[i:i + chunk_size]
-        # 5) Extract features
+        # Pad with zeros if the chunk is too short
+        if len(chunk) < chunk_size:
+            chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
+            
+        # Extract features
         spectogram = AudioPreprocessor.extract_features(chunk, sr)
+        
+        #  Just testing
+        image = AudioPreprocessor.spectogram_to_grayscale_image(spectogram)
+        image = AudioPreprocessor.get_raw_image_bytes(image)
+        
         # 6) Add to the dataset using pd.concat instead of deprecated append
         new_row = pd.DataFrame([{
-            'spectogram': spectogram, 
+            'spectogram': image, 
             'instrument': mp3_file.parent.name,
             'title': mp3_file.stem, 
             'chunk_id': i
         }])
         new_dataset = pd.concat([new_dataset, new_row], ignore_index=True)
-        break
-    break
-new_dataset.to_pickle('data/dataset/processed_dataset.pkl')
-# new_dataset.to_parquet('data/dataset/processed_dataset.parquet')
-# print(f"Saved dataset for file: {mp3_file}")  # print saving info
+        # break
+    print(f"Saved dataset for file: {mp3_file}")  # print saving info
+    # break
+
+new_dataset.to_parquet('data/dataset/processed_dataset.parquet')
+print("Saved dataset to 'data/dataset/processed_dataset.parquet'")

@@ -1,5 +1,5 @@
-title,url
-piano_solo_00,https://www.youtube.com/watch?v=hQncT4Hswhw
-guitar_solo_00,https://www.youtube.com/watch?v=aCXPBXgiBvk
-violin_solo_00,https://www.youtube.com/watch?v=ke7QqBdXuJs
-harp_solo_00,https://www.youtube.com/watch?v=0OzvuUFu61U
+instrument,title,url
+piano,piano_solo_00,https://www.youtube.com/watch?v=hQncT4Hswhw
+guitar,guitar_solo_00,https://www.youtube.com/watch?v=aCXPBXgiBvk
+violin,violin_solo_00,https://www.youtube.com/watch?v=ke7QqBdXuJs
+harp,harp_solo_00,https://www.youtube.com/watch?v=0OzvuUFu61U
