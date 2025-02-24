@@ -16,6 +16,8 @@ from data.audio_processor import AudioPreprocessor
 
 
 CHUNK_SIZE = 5  # seconds
+# 1800 is 30 minutes (lowest duration in current videofiles -> all instruments have same duration then)
+MAX_DURATION = 1800  # maximum duration per file in seconds, None for no limit
 new_dataset = pd.DataFrame(columns=['spectogram', 'instrument', 'title', 'chunk_id'])
 AudioPreprocessor = AudioPreprocessor()
 
@@ -34,6 +36,9 @@ for mp3_file in mp3_files:
     chunk_size = int(CHUNK_SIZE * sr) # get #samples in 5 seconds
     # Iterate over the audio in chunks
     for i in range(0, len(audio), chunk_size):
+        # Check if we have reached the maximum duration for the file
+        if MAX_DURATION is not None and (i / sr) >= MAX_DURATION:
+            break
         chunk = audio[i:i + chunk_size]
         # Pad with zeros if the chunk is too short
         if len(chunk) < chunk_size:
@@ -46,7 +51,7 @@ for mp3_file in mp3_files:
         image = AudioPreprocessor.spectogram_to_grayscale_image(spectogram)
         image = AudioPreprocessor.get_raw_image_bytes(image)
         
-        # 6) Add to the dataset using pd.concat instead of deprecated append
+        # Add to the dataset using pd.concat instead of deprecated append
         new_row = pd.DataFrame([{
             'spectogram': image, 
             'instrument': mp3_file.parent.name,
@@ -55,8 +60,8 @@ for mp3_file in mp3_files:
         }])
         new_dataset = pd.concat([new_dataset, new_row], ignore_index=True)
         # break
-    print(f"Saved dataset for file: {mp3_file}")  # print saving info
+    print(f"Finished processing for file: {mp3_file}")  # print saving info
     # break
 
-new_dataset.to_parquet('data/dataset/processed_dataset.parquet')
-print("Saved dataset to 'data/dataset/processed_dataset.parquet'")
+new_dataset.to_parquet('downloads/processed_dataset.parquet')
+print("Saved dataset to 'downloads/processed_dataset.parquet'")
