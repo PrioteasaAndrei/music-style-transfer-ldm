@@ -1,3 +1,4 @@
+from io import BytesIO
 import sys
 from pathlib import Path
 
@@ -5,6 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import numpy as np
 import librosa
+from PIL import Image
 import matplotlib.pyplot as plt
 
 
@@ -45,6 +47,32 @@ class AudioPreprocessor:
         mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
         log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
         return log_mel_spec
+
+    def spectogram_to_grayscale_image(self, spectogram, max_db=80):
+        """
+        Converts a log-scaled Mel spectrogram to an image.
+        :param spectogram: Log-scaled Mel spectrogram.
+        :param max_db: Maximum decibel value for clipping.
+        :return: Image of the Mel spectrogram.
+        """
+        # Shift to positive values
+        spectogram = spectogram + max_db
+        # Scale to 0-255 (grayscale)
+        spectogram = spectogram * (255.0 / max_db)
+        # Clip out of bounds
+        spectogram = np.clip(spectogram, 0, 255)
+        # Do rounding trick and convert to uint8
+        spectogram = (spectogram + 0.5).astype(np.uint8)
+        
+        # Create an image
+        image = Image.fromarray(spectogram)
+        return image
+
+    def get_raw_image_bytes(self, image):
+        with BytesIO() as output:
+            image.save(output, format="PNG")
+            image = output.getvalue()
+        return image
 
     def plot_audio(self, audio, sr):
         """
