@@ -86,10 +86,10 @@ class AudioDownloader:
 
     def download_from_csv(self, filepath: str) -> List[str]:
         """
-        Downloads audio from a CSV file containing YouTube URLs and optional titles.
-        The CSV file should have headers: title,url,download_section
-        :param filepath: Path to CSV file containing YouTube URLs and optional titles.
-        :return: List of paths to downloaded audio files
+        Downloads audio from a CSV file containing instrument, title, and YouTube URLs.
+        The CSV file should have headers: instrument,title,url.
+        :param filepath: Path to CSV file containing the data.
+        :return: List of paths to downloaded audio files.
         """
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"CSV file not found: {filepath}")
@@ -100,16 +100,26 @@ class AudioDownloader:
 
         for idx, row in df.iterrows():
             url = row.get("url")
+            instrument = row.get("instrument")
             title = row.get("title", None)
-            section = row.get("download_section", None)
             
             if pd.isna(url):
                 continue
-
+            
+            # Use a default folder name if instrument is not provided.
+            if pd.isna(instrument) or instrument == "":
+                instrument = "Unknown"
+            
+            # Create the instrument subfolder within the output directory.
+            instrument_dir = os.path.join(self.output_path, instrument)
+            os.makedirs(instrument_dir, exist_ok=True)
+            
             try:
                 print(f"\nDownloading {url}...")
-                filename = f"{title}" if pd.notna(title) else None
-                                
+                filename = None
+                if pd.notna(title):
+                    filename = os.path.join(instrument, f"{title}.{self.codec}")
+                                    
                 audio_path = self.download_audio(url, filename)
                 downloaded_files.append(audio_path)
                 print(f"Successfully downloaded: {url} -> {audio_path}")
