@@ -73,6 +73,23 @@ class AudioPreprocessor:
             image.save(output, format="PNG")
             image = output.getvalue()
         return image
+    
+    def grayscale_image_to_audio(self, image, sr, im_height, im_width, max_db=80):
+        """
+        ! TODO: Not tested yet!  
+        Converts a grayscale image back to audio.  
+        :param image: Grayscale image.  
+        :param sr: Sampling rate.  
+        :return: Audio time series.  
+        """
+        # To raw bytes
+        image_bytes = np.frombuffer(image.tobytes(), dtype=np.uint8)
+        # Reshape
+        image_bytes = image_bytes.reshape(im_height, im_width)
+        log_mel_spec = image_bytes.astype(np.float32) * (max_db / 255.0) - max_db
+        mel_spec = librosa.db_to_power(log_mel_spec)
+        audio = librosa.feature.inverse.mel_to_audio(mel_spec, sr=sr)
+        return audio
 
     def plot_audio(self, audio, sr):
         """
