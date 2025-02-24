@@ -118,7 +118,7 @@ class AudioDownloader:
                 print(f"\nDownloading {url}...")
                 filename = None
                 if pd.notna(title):
-                    filename = os.path.join(instrument, f"{title}.{self.codec}")
+                    filename = os.path.join(instrument, f"{title}")
                                     
                 audio_path = self.download_audio(url, filename)
                 downloaded_files.append(audio_path)
