@@ -45,10 +45,10 @@ for mp3_file in mp3_files:
             chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
             
         # Extract features
-        spectogram = AudioPreprocessor.extract_features(chunk, sr)
+        spectogram = AudioPreprocessor.get_mel_spectogram(chunk, sr)
         
         #  Just testing
-        image = AudioPreprocessor.spectogram_to_grayscale_image(spectogram)
+        image = AudioPreprocessor.mel_spectogram_to_grayscale_image(spectogram)
         image = AudioPreprocessor.get_raw_image_bytes(image)
         
         # Add to the dataset using pd.concat instead of deprecated append

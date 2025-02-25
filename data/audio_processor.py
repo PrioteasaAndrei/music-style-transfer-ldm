@@ -37,18 +37,18 @@ class AudioPreprocessor:
         trimmed_audio, _ = librosa.effects.trim(audio, top_db=top_db)
         return trimmed_audio
 
-    def extract_features(self, audio, sr):
+    def get_mel_spectogram(self, audio, sr, n_mels=128):
         """
         Extracts a Mel spectrogram from the audio.
         :param audio: Audio time series.
         :param sr: Sampling rate.
         :return: Log-scaled Mel spectrogram.
         """
-        mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
+        mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
         log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
         return log_mel_spec
 
-    def spectogram_to_grayscale_image(self, spectogram, max_db=80):
+    def mel_spectogram_to_grayscale_image(self, spectogram, max_db=80):
         """
         Converts a log-scaled Mel spectrogram to an image.
         :param spectogram: Log-scaled Mel spectrogram.
@@ -74,14 +74,18 @@ class AudioPreprocessor:
             image = output.getvalue()
         return image
     
-    def grayscale_image_to_audio(self, image, sr, im_height, im_width, max_db=80):
+    def grayscale_mel_spectogram_image_to_audio(self, image, sr, im_height, im_width, max_db=80):
         """
         ! TODO: Not tested yet!  
-        Converts a grayscale image back to audio.  
-        :param image: Grayscale image.  
-        :param sr: Sampling rate.  
-        :return: Audio time series.  
+        Converts a grayscale image of a Mel spectrogram back to audio
+        :param image: Grayscale image.
+        :param sr: Sampling rate.
+        :param im_height: Image height (number of frequency bins).
+        :param im_width: Image width (number of time frames).
+        :param max_db: Maximum decibel value used during the conversion.
+        :return: Reconstructed audio time series.
         """
+        
         # To raw bytes
         image_bytes = np.frombuffer(image.tobytes(), dtype=np.uint8)
         # Reshape
@@ -90,6 +94,60 @@ class AudioPreprocessor:
         mel_spec = librosa.db_to_power(log_mel_spec)
         audio = librosa.feature.inverse.mel_to_audio(mel_spec, sr=sr)
         return audio
+
+    def get_spectogram(self, audio):
+        """
+        Extracts a spectrogram from the audio.
+        :param audio: Audio time series.
+        :return: Spectrogram.
+        """
+        stft = librosa.stft(audio)
+        spectogram = np.abs(stft)
+        spectogram = librosa.amplitude_to_db(spectogram, ref=np.max)
+        return spectogram
+    
+    def spectogram_to_grayscale_image(self, spectogram, max_db=80):
+        """
+        ! TODO: Not tested yet!  
+        Converts a log-scaled spectrogram to a grayscale image.
+        :param spectogram: Log-scaled spectrogram.
+        :param max_db: Maximum decibel value for clipping.
+        :return: Grayscale image of the spectrogram.
+        """
+        # Shift to positive values
+        spectogram = spectogram + max_db
+        # Scale values to the 0-255 range
+        spectogram = spectogram * (255.0 / max_db)
+        # Clip values outside [0, 255]
+        spectogram = np.clip(spectogram, 0, 255)
+        # Round and convert to uint8
+        spectogram = (spectogram + 0.5).astype(np.uint8)
+        image = Image.fromarray(spectogram)
+        return image
+
+    def grayscale_spectogram_image_to_audio(self, image, im_height, im_width, max_db=80, n_iter=32, hop_length=None, win_length=None):
+        """
+        ! TODO: Not tested yet! 
+        Converts a grayscale image of a spectrogram back to audio
+        :param image: Grayscale image.
+        :param im_height: Image height (number of frequency bins).
+        :param im_width: Image width (number of time frames).
+        :param max_db: Maximum decibel value used during the conversion.
+        :param n_iter: Number of iterations for  Griffin-Lim.
+        :param hop_length: Hop length for STFT (if None, librosa's default is used).
+        :param win_length: Window length for STFT (if None, librosa's default is used).
+        :return: Reconstructed audio time series.
+        """
+        # Convert image to raw bytes and reshape
+        image_bytes = np.frombuffer(image.tobytes(), dtype=np.uint8)
+        image_bytes = image_bytes.reshape(im_height, im_width)
+        # Convert back to a log-scaled spectrogram
+        log_spec = image_bytes.astype(np.float32) * (max_db / 255.0) - max_db
+        # Convert from decibels to amplitude
+        amplitude_spec = librosa.db_to_amplitude(log_spec)
+        # Reconstruct audio using the Griffin-Lim algorithm
+        audio = librosa.griffinlim(amplitude_spec, n_iter=n_iter, hop_length=hop_length, win_length=win_length)
+        return audio            
 
     def plot_audio(self, audio, sr):
         """
