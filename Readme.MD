@@ -17,3 +17,9 @@ This project implements the framework described in the paper Music Style Transfe
 # TODOS
 
 - [ ] way to add todos
+- [ ] Black Band problem.
+- [ ] How to get a more fixed size image? -> 256x256?
+- [ ] image normalization?ß
+- [ ] Why are the db in the reconstructed songs so different? Does changing normalization affect this? Can we just adjust volume?
+- [ ] Statistics on the spectograms -> By label (maybe plot 16 spectograms per label) Do patterns emerge?
+- [ ] Complete Dataset in different pytorch format

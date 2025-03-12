@@ -37,6 +37,10 @@ class AudioPreprocessor:
         trimmed_audio, _ = librosa.effects.trim(audio, top_db=top_db)
         return trimmed_audio
 
+    def normalize_audio(self, audio):
+        # ! TODO: Implement normalization
+        pass
+
     def get_mel_spectogram(self, audio, sr, n_mels=128):
         """
         Extracts a Mel spectrogram from the audio.
