@@ -14,9 +14,14 @@ This project implements the framework described in the paper Music Style Transfe
 - maybe integrate <https://lightning.ai/docs/pytorch/stable/starter/introduction.html>
 - OmegaConf for configs: <https://github.com/ashleve/lightning-hydra-template>
 
-# TODOS
+# TODOs Andrei
+- [ ] Implement skeleton for dataset
+- [ ] see if you integrade pytorch lightning
+- [ ] decide on the number of parameters (256 x 256 images)
+- [ ] implement DDIM during sampling
 
-- [ ] way to add todos
+# TODOS Theo
+
 - [ ] Black Band problem.
 - [ ] How to get a more fixed size image? -> 256x256?
 - [ ] image normalization?ß
