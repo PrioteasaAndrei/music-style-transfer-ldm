@@ -6,21 +6,18 @@ from typing import Dict, List, Optional, Tuple
 import math
 
 
-
-
 class SpectrogramEncoder(nn.Module):
     def __init__(self, latent_dim=4):
         super(SpectrogramEncoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=4, stride=2, padding=1),  # 128x128
+            nn.Conv2d(1, 64, kernel_size=4, stride=4, padding=0),  # 64x64
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # 64x64
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # 32x32
-            nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=4, stride=2, padding=1),  # 16x16
-            nn.ReLU(),
-            nn.Conv2d(128, latent_dim, kernel_size=4, stride=2, padding=1),  # 8x8xlatent_dim
+            nn.Conv2d(64, 128, kernel_size=4, stride=4, padding=0),  # 16x16
+            nn.BatchNorm2d(128),
+            nn.ReLU(), 
+            nn.Conv2d(128, latent_dim, kernel_size=2, stride=2, padding=0),  # 8x8xlatent_dim
+            nn.BatchNorm2d(latent_dim)
         )
 
     def forward(self, x):
@@ -30,21 +27,18 @@ class SpectrogramDecoder(nn.Module):
     def __init__(self, latent_dim=4):
         super(SpectrogramDecoder, self).__init__()
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 128, kernel_size=4, stride=2, padding=1),  # 16x16
+            nn.ConvTranspose2d(latent_dim, 128, kernel_size=2, stride=2, padding=0),  # 16x16
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 128, kernel_size=4, stride=2, padding=1),  # 32x32
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=4, padding=0),  # 64x64
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # 64x64
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # 128x128
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1),  # 256x256
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=4, padding=0),  # 256x256
             nn.Tanh()  # Output normalized to [-1, 1]
         )
 
     def forward(self, z):
         return self.decoder(z)
-    
 
 class ForwardDiffusion(nn.Module):
     def __init__(self, num_timesteps=1000):
@@ -101,6 +95,10 @@ class UNet(nn.Module):
         self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
         self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
 
+        # Cross-attention mechanism for style transfer
+        # TODO
+        self.cross_attention = nn.MultiheadAttention(embed_dim=num_filters * 4, num_heads=4)
+
         # Bottleneck
         self.bottleneck = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=1, padding=1)
 
@@ -109,10 +107,11 @@ class UNet(nn.Module):
         self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
         self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, z, t):
+    def forward(self, z, t, style_embedding=None):
         """
         z: Noisy latent spectrogram
         t: Diffusion timestep (for time conditioning)
+        style_embedding: Style embedding for cross-attention
         """
         # Process time embedding
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
@@ -122,10 +121,17 @@ class UNet(nn.Module):
         z2 = F.relu(self.enc2(z1)) + t_embedding  # Inject time conditioning
         z3 = F.relu(self.enc3(z2))
 
+        if style_embedding is not None:
+            batch_size, c, h, w = z3.shape
+            z3_flat = z3.view(batch_size, c, h * w).permute(2, 0, 1)  # Reshape for attention
+            style_embedding = style_embedding.unsqueeze(0).repeat(h * w, 1, 1)  # Match dimensions
+            z3_flat, _ = self.cross_attention(z3_flat, style_embedding, style_embedding)
+            z3 = z3_flat.permute(1, 2, 0).view(batch_size, c, h, w)  # Reshape back
+
         # Bottleneck
         bottleneck = F.relu(self.bottleneck(z3))
 
-        # Decoder
+        # Decoder - these are skip connections
         z3_up = F.relu(self.dec3(bottleneck)) + z2
         z2_up = F.relu(self.dec2(z3_up)) + z1
         output = self.dec1(z2_up)
@@ -192,3 +198,69 @@ class SinusoidalPositionEmbeddings(nn.Module):
         embeddings = time[:, None] * embeddings[None, :]
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
+    
+
+
+# class LatentDiffusionModel(nn.Module):
+#     def __init__(
+#         self,
+#         latent_dim=4,
+#         num_timesteps=100,
+#         device=None
+#     ):
+#         super().__init__()
+#         if device is None:
+#             self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+#         else:
+#             self.device = device
+
+#         # Initialize components
+#         self.encoder = SpectrogramEncoder(latent_dim=latent_dim).to(self.device)
+#         self.decoder = SpectrogramDecoder(latent_dim=latent_dim).to(self.device)
+#         # TODO: add parameters to unet
+#         self.unet = UNet().to(self.device)
+#         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
+
+#     def encode(self, x):
+#         """Encode spectrogram to latent space"""
+#         return self.encoder(x)
+
+#     def decode(self, z):
+#         """Decode latent representation back to spectrogram"""
+#         return self.decoder(z)
+
+#     def diffuse(self, z_0, t):
+#         """Apply forward diffusion to latent"""
+#         return self.noise_scheduler(z_0, t)
+
+#     def denoise(self, z_t, t):
+#         """Single denoising step"""
+#         return self.unet(z_t, t)
+
+#     def sample(self, z_T, num_steps=50, eta=0.0):
+#         """Sample from noise using DDIM"""
+#         return ddim_sample(
+#             z_T, 
+#             self.unet,
+#             self.noise_scheduler.alpha_bar_t,
+#             self.noise_scheduler.beta_t,
+#             timesteps=num_steps,
+#             eta=eta
+#         )
+
+#     def forward(self, x, t):
+#         """
+#         Forward pass through the full model
+#         x: input spectrogram
+#         t: timesteps for diffusion
+#         """
+#         # Encode to latent space
+#         z_0 = self.encode(x)
+        
+#         # Apply forward diffusion
+#         z_t, noise = self.diffuse(z_0, t)
+        
+#         # Predict noise
+#         noise_pred = self.denoise(z_t, t)
+        
+#         return z_t, noise, noise_pred

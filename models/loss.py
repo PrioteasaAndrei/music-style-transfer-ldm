@@ -13,9 +13,7 @@ def perceptual_loss(original, reconstructed, feature_extractor=None):
     reconstructed_features = feature_extractor(reconstructed)
     
     # Compute perceptual loss as the mean absolute difference between features
-    loss = torch.mean(torch.abs(original_features - reconstructed_features))
-    
-    return loss
+    return torch.nn.functional.l1_loss(original_features, reconstructed_features)
 
 def kl_regularization_loss(latent):
     return torch.mean(0.5 * (latent.pow(2) - 1 - torch.log(latent.pow(2) + 1e-8)))

@@ -16,11 +16,13 @@ This project implements the framework described in the paper Music Style Transfe
 
 # TODOs Andrei
 - [ ] Implement skeleton for dataset
-- [ ] see if you integrade pytorch lightning
+- [ ] see if KL regularization is actually needed 
+- [ ] use pretrained LPIPS for perceptual loss during autoencoder training
 - [x] implement DDIM during sampling
   - [ ] check that DDIM actually works and see how many iterations you should do (remember they did around 50 for the MRI paper)
 
 - [x] decide on the number of parameters (256 x 256 images)
+- [x] see if you integrade pytorch lightning
 
 
 # TODOS Theo
