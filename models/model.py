@@ -5,96 +5,186 @@ import pytorch_lightning as pl
 from typing import Dict, List, Optional, Tuple
 import math
 
-### TODO: check all of this
 
-class Encoder(nn.Module):
-    def __init__(
-        self,
-        in_channels: int = 1,
-        hidden_dims: List[int] = [32, 64, 128, 256],
-        latent_dim: int = 64
-    ):
-        super().__init__()
-        
-        # Build encoder layers
-        modules = []
-        for h_dim in hidden_dims:
-            modules.extend([
-                nn.Conv2d(in_channels, h_dim, 3, stride=2, padding=1),
-                nn.GroupNorm(8, h_dim),
-                nn.SiLU()
-            ])
-            in_channels = h_dim
-            
-        self.encoder = nn.Sequential(*modules)
-        self.mu = nn.Conv2d(hidden_dims[-1], latent_dim, 1)
-        self.log_var = nn.Conv2d(hidden_dims[-1], latent_dim, 1)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.encoder(x)
-        return self.mu(x), self.log_var(x)
 
-class Decoder(nn.Module):
-    def __init__(
-        self,
-        latent_dim: int = 64,
-        hidden_dims: List[int] = [256, 128, 64, 32],
-        out_channels: int = 1
-    ):
-        super().__init__()
-        
-        # Build decoder layers
-        modules = []
-        in_channels = latent_dim
-        for h_dim in hidden_dims:
-            modules.extend([
-                nn.ConvTranspose2d(in_channels, h_dim, 3, stride=2, padding=1, output_padding=1),
-                nn.GroupNorm(8, h_dim),
-                nn.SiLU()
-            ])
-            in_channels = h_dim
-            
-        modules.append(nn.Conv2d(hidden_dims[-1], out_channels, 3, padding=1))
-        self.decoder = nn.Sequential(*modules)
+class SpectrogramEncoder(nn.Module):
+    def __init__(self, latent_dim=4):
+        super(SpectrogramEncoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=4, stride=2, padding=1),  # 128x128
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # 64x64
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # 32x32
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=4, stride=2, padding=1),  # 16x16
+            nn.ReLU(),
+            nn.Conv2d(128, latent_dim, kernel_size=4, stride=2, padding=1),  # 8x8xlatent_dim
+        )
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        return self.encoder(x)
+    
+class SpectrogramDecoder(nn.Module):
+    def __init__(self, latent_dim=4):
+        super(SpectrogramDecoder, self).__init__()
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(latent_dim, 128, kernel_size=4, stride=2, padding=1),  # 16x16
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 128, kernel_size=4, stride=2, padding=1),  # 32x32
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # 64x64
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # 128x128
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1),  # 256x256
+            nn.Tanh()  # Output normalized to [-1, 1]
+        )
+
+    def forward(self, z):
         return self.decoder(z)
+    
 
-class VAE(nn.Module):
-    def __init__(
-        self,
-        in_channels: int = 1,
-        hidden_dims: List[int] = [32, 64, 128, 256],
-        latent_dim: int = 64
-    ):
+class ForwardDiffusion(nn.Module):
+    def __init__(self, num_timesteps=1000):
         super().__init__()
-        self.encoder = Encoder(in_channels, hidden_dims, latent_dim)
-        self.decoder = Decoder(latent_dim, hidden_dims[::-1], in_channels)
+        self.num_timesteps = num_timesteps
+        
+        # Pre-compute values
+        beta_start = 0.0001
+        beta_end = 0.02
+        self.beta_t = torch.linspace(beta_start, beta_end, num_timesteps)
+        self.alpha_t = 1 - self.beta_t
+        self.alpha_bar_t = torch.cumprod(self.alpha_t, dim=0)
+    
+    def forward(self, x_0, t):
+        device = x_0.device
+        
+        # Move pre-computed values to the correct device
+        self.beta_t = self.beta_t.to(device)
+        self.alpha_t = self.alpha_t.to(device)
+        self.alpha_bar_t = self.alpha_bar_t.to(device)
+        
+        # Move t to correct device and ensure it's long type for indexing
+        t = t.to(device)
+        
+        # Get alpha_bar_t for the batch
+        alpha_bar_t = self.alpha_bar_t[t].view(-1, 1, 1, 1)  # Shape: (batch, 1, 1, 1)
+        
+        # Sample noise
+        eps = torch.randn_like(x_0)
+        
+        # Apply forward process
+        z_t = torch.sqrt(alpha_bar_t) * x_0 + torch.sqrt(1 - alpha_bar_t) * eps
+        
+        return z_t, eps
 
-    def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std)
-        return mu + eps * std
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        mu, log_var = self.encoder(x)
-        z = self.reparameterize(mu, log_var)
-        recon = self.decoder(z)
-        return {"recon": recon, "mu": mu, "log_var": log_var, "z": z}
+class UNet(nn.Module):
+    def __init__(self, in_channels=1, out_channels=1, num_filters=64, num_timesteps=1000):
+        super(UNet, self).__init__()
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        mu, log_var = self.encoder(x)
-        return self.reparameterize(mu, log_var)
+        
+        # Define the channel dimensions used in your UNet
+        time_emb_dim = 128  # This should match the channel dimension where you add the time embedding
+        
+        self.time_mlp = nn.Sequential(
+            SinusoidalPositionEmbeddings(time_emb_dim),  # Match the channel dimension
+            nn.Linear(time_emb_dim, time_emb_dim),
+            nn.GELU(),
+            nn.Linear(time_emb_dim, time_emb_dim),
+        )
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        return self.decoder(z)
+        # Downsampling path
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
 
-class SinusoidalTimeEmbedding(nn.Module):
-    def __init__(self, dim: int):
+        # Bottleneck
+        self.bottleneck = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=1, padding=1)
+
+        # Upsampling path
+        self.dec3 = nn.ConvTranspose2d(num_filters * 4, num_filters * 2, kernel_size=3, stride=2, padding=1, output_padding=1)  # 128x128
+        self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
+        self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, z, t):
+        """
+        z: Noisy latent spectrogram
+        t: Diffusion timestep (for time conditioning)
+        """
+        # Process time embedding
+        t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
+
+        # Encoder
+        z1 = F.relu(self.enc1(z))
+        z2 = F.relu(self.enc2(z1)) + t_embedding  # Inject time conditioning
+        z3 = F.relu(self.enc3(z2))
+
+        # Bottleneck
+        bottleneck = F.relu(self.bottleneck(z3))
+
+        # Decoder
+        z3_up = F.relu(self.dec3(bottleneck)) + z2
+        z2_up = F.relu(self.dec2(z3_up)) + z1
+        output = self.dec1(z2_up)
+
+        return output
+    
+
+# TODO: I still doubt the formulas are right here
+def ddim_sample(z_T, model, alpha_bar_t, beta_t, eta=0.0, timesteps=100):
+    """
+    DDIM Reverse Sampling Process
+
+    z_T: Initial noisy latent (from Gaussian prior)
+    model: Trained denoising U-Net
+    alpha_bar_t: Precomputed cumulative noise schedule
+    beta_t: Noise variance schedule
+    num_steps: Number of denoising steps (less = faster)
+    eta: Controls stochasticity (0 = deterministic DDIM)
+
+    Returns: Denoised latent z_0 (final spectrogram latent)
+    """
+    device = z_T.device
+    batch_size = z_T.shape[0]
+    
+    # Move alpha_bar_t and beta_t to the same device as z_T
+    alpha_bar_t = alpha_bar_t.to(device)
+    beta_t = beta_t.to(device)
+    
+    for i in range(timesteps - 1, -1, -1):
+        t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+        t_float = t.float()
+        
+        with torch.no_grad():
+            noise_pred = model(z_T, t_float)
+            
+            # Get alpha values and reshape for broadcasting
+            alpha_bar_t_prev = alpha_bar_t[t].view(-1, 1, 1, 1)  # [B, 1, 1, 1]
+            alpha_bar_t_curr = alpha_bar_t[t+1].view(-1, 1, 1, 1) if i+1 < timesteps else torch.ones(batch_size, 1, 1, 1, device=device)
+
+            # Compute sigma (variance term)
+            sigma_t = eta * torch.sqrt((1 - alpha_bar_t_prev) * (1 - alpha_bar_t_curr) / alpha_bar_t_curr)
+
+            # Compute predicted x_0 (denoised sample)
+            pred_x0 = (z_T - torch.sqrt(1 - alpha_bar_t_prev) * noise_pred) / torch.sqrt(alpha_bar_t_prev)
+
+            # Compute direction pointing to x_t
+            dir_xt = torch.sqrt(1 - alpha_bar_t_curr - sigma_t**2) * noise_pred
+
+            # Sample z_{t-1} using the DDIM formula
+            z_T = torch.sqrt(alpha_bar_t_prev) * pred_x0 + dir_xt + sigma_t * torch.randn_like(z_T)
+
+    return z_T
+
+class SinusoidalPositionEmbeddings(nn.Module):
+    def __init__(self, dim):
         super().__init__()
         self.dim = dim
 
-    def forward(self, time: torch.Tensor) -> torch.Tensor:
+    def forward(self, time):
         device = time.device
         half_dim = self.dim // 2
         embeddings = math.log(10000) / (half_dim - 1)
@@ -102,240 +192,3 @@ class SinusoidalTimeEmbedding(nn.Module):
         embeddings = time[:, None] * embeddings[None, :]
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
-
-class ResidualBlock(nn.Module):
-    def __init__(self, channels: int, time_channels: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.time_mlp = nn.Linear(time_channels, channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.norm1 = nn.GroupNorm(8, channels)
-        self.norm2 = nn.GroupNorm(8, channels)
-
-    def forward(self, x: torch.Tensor, time_emb: torch.Tensor) -> torch.Tensor:
-        h = self.norm1(x)
-        h = F.silu(h)
-        h = self.conv1(h)
-
-        time_emb = F.silu(time_emb)
-        time_emb = self.time_mlp(time_emb)
-        h = h + time_emb[..., None, None]
-
-        h = self.norm2(h)
-        h = F.silu(h)
-        h = self.conv2(h)
-        return h + x
-
-class AttentionBlock(nn.Module):
-    def __init__(self, channels: int):
-        super().__init__()
-        self.channels = channels
-        self.norm = nn.GroupNorm(8, channels)
-        self.qkv = nn.Conv2d(channels, channels * 3, 1)
-        self.proj = nn.Conv2d(channels, channels, 1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
-        q, k, v = self.qkv(self.norm(x)).chunk(3, dim=1)
-        
-        q = q.view(B, C, -1)
-        k = k.view(B, C, -1)
-        v = v.view(B, C, -1)
-
-        attn = torch.einsum('bci,bcj->bij', q, k) * (self.channels ** -0.5)
-        attn = F.softmax(attn, dim=2)
-        
-        out = torch.einsum('bij,bcj->bci', attn, v)
-        out = out.view(B, C, H, W)
-        return self.proj(out) + x
-
-class UNet(nn.Module):
-    def __init__(
-        self,
-        in_channels: int = 64,  # Latent dimension
-        model_channels: int = 128,
-        out_channels: int = 64,  # Latent dimension
-        time_emb_dim: int = 256,
-        num_res_blocks: int = 2
-    ):
-        super().__init__()
-        
-        # Time embedding
-        self.time_embed = nn.Sequential(
-            SinusoidalTimeEmbedding(time_emb_dim),
-            nn.Linear(time_emb_dim, time_emb_dim * 4),
-            nn.SiLU(),
-            nn.Linear(time_emb_dim * 4, time_emb_dim)
-        )
-
-        # Initial convolution
-        self.conv_in = nn.Conv2d(in_channels * 2, model_channels, 3, padding=1)  # *2 for conditioning
-
-        # Downsampling
-        self.downs = nn.ModuleList([])
-        current_channels = model_channels
-        channel_mults = [1, 2, 4]
-        
-        for mult in channel_mults:
-            out_channels = model_channels * mult
-            for _ in range(num_res_blocks):
-                self.downs.append(nn.ModuleList([
-                    ResidualBlock(current_channels, time_emb_dim),
-                    AttentionBlock(current_channels)
-                ]))
-                current_channels = out_channels
-            
-            if mult != channel_mults[-1]:  # Don't downsample at the last block
-                self.downs.append(nn.Conv2d(current_channels, current_channels, 4, 2, 1))
-
-        # Middle
-        self.mid = nn.ModuleList([
-            ResidualBlock(current_channels, time_emb_dim),
-            AttentionBlock(current_channels),
-            ResidualBlock(current_channels, time_emb_dim)
-        ])
-
-        # Upsampling
-        self.ups = nn.ModuleList([])
-        for mult in reversed(channel_mults[:-1]):
-            out_channels = model_channels * mult
-            for _ in range(num_res_blocks + 1):
-                self.ups.append(nn.ModuleList([
-                    ResidualBlock(current_channels, time_emb_dim),
-                    AttentionBlock(current_channels)
-                ]))
-                current_channels = out_channels
-            
-            self.ups.append(
-                nn.ConvTranspose2d(current_channels, current_channels, 4, 2, 1)
-            )
-
-        # Final layers
-        self.final = nn.Sequential(
-            ResidualBlock(model_channels, time_emb_dim),
-            nn.Conv2d(model_channels, out_channels, 3, padding=1)
-        )
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        # Time embedding
-        t = self.time_embed(t)
-        
-        # Concatenate condition
-        x = torch.cat([x, cond], dim=1)
-        
-        # Initial convolution
-        h = self.conv_in(x)
-        
-        # Store skip connections
-        skips = []
-        
-        # Downsampling
-        for layer in self.downs:
-            if isinstance(layer, nn.ModuleList):
-                for sublayer in layer:
-                    h = sublayer(h, t) if isinstance(sublayer, ResidualBlock) else sublayer(h)
-            else:
-                skips.append(h)
-                h = layer(h)
-        
-        # Middle
-        for layer in self.mid:
-            h = layer(h, t) if isinstance(layer, ResidualBlock) else layer(h)
-        
-        # Upsampling
-        for layer in self.ups:
-            if isinstance(layer, nn.ModuleList):
-                for sublayer in layer:
-                    h = sublayer(h, t) if isinstance(sublayer, ResidualBlock) else sublayer(h)
-            else:
-                h = layer(h)
-                if skips:
-                    h = h + skips.pop()
-        
-        return self.final(h)
-
-class LatentDiffusion(pl.LightningModule):
-    def __init__(
-        self,
-        latent_dim: int = 64,
-        model_channels: int = 128,
-        time_emb_dim: int = 256,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        n_timesteps: int = 1000,
-        lr: float = 1e-4
-    ):
-        super().__init__()
-        # VAE for encoding/decoding spectrograms
-        self.vae = VAE(in_channels=1, latent_dim=latent_dim)
-        
-        # Denoising UNet
-        self.model = UNet(
-            in_channels=latent_dim,
-            model_channels=model_channels,
-            out_channels=latent_dim,
-            time_emb_dim=time_emb_dim
-        )
-        
-        self.lr = lr
-        
-        # Register diffusion parameters
-        self.register_buffer('betas', torch.linspace(beta_start, beta_end, n_timesteps))
-        self.register_buffer('alphas', 1 - self.betas)
-        self.register_buffer('alphas_cumprod', torch.cumprod(self.alphas, dim=0))
-        
-    def encode_to_latent(self, x: torch.Tensor) -> torch.Tensor:
-        return self.vae.encode(x)
-        
-    def decode_from_latent(self, z: torch.Tensor) -> torch.Tensor:
-        return self.vae.decode(z)
-    
-    def add_noise(self, x: torch.Tensor, t: torch.Tensor, noise: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if noise is None:
-            noise = torch.randn_like(x)
-            
-        alphas_cumprod_t = self.alphas_cumprod[t].view(-1, 1, 1, 1)
-        return torch.sqrt(alphas_cumprod_t) * x + torch.sqrt(1 - alphas_cumprod_t) * noise
-    
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Encode inputs to latent space
-        z = self.encode_to_latent(x)
-        z_cond = self.encode_to_latent(cond)
-        
-        # Sample timestep
-        batch_size = z.shape[0]
-        t = torch.randint(0, len(self.betas), (batch_size,), device=z.device)
-        
-        # Add noise in latent space
-        noise = torch.randn_like(z)
-        noisy_z = self.add_noise(z, t, noise)
-        
-        # Predict noise
-        pred = self.model(noisy_z, t, z_cond)
-        return pred, noise
-    
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> torch.Tensor:
-        x, cond = batch
-        
-        # Train VAE
-        vae_output = self.vae(x)
-        recon_loss = F.mse_loss(vae_output["recon"], x)
-        kl_loss = -0.5 * torch.mean(1 + vae_output["log_var"] - vae_output["mu"].pow(2) - vae_output["log_var"].exp())
-        vae_loss = recon_loss + 0.1 * kl_loss
-        
-        # Train diffusion
-        pred_noise, target_noise = self(x, cond)
-        diffusion_loss = F.mse_loss(pred_noise, target_noise)
-        
-        # Total loss
-        total_loss = vae_loss + diffusion_loss
-        
-        # Logging
-        self.log('train_loss', total_loss)
-        self.log('vae_loss', vae_loss)
-        self.log('diffusion_loss', diffusion_loss)
-        
-        return total_loss
-    
-    def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.lr)
