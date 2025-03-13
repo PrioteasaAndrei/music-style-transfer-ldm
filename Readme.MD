@@ -17,8 +17,11 @@ This project implements the framework described in the paper Music Style Transfe
 # TODOs Andrei
 - [ ] Implement skeleton for dataset
 - [ ] see if you integrade pytorch lightning
-- [ ] decide on the number of parameters (256 x 256 images)
-- [ ] implement DDIM during sampling
+- [x] implement DDIM during sampling
+  - [ ] check that DDIM actually works and see how many iterations you should do (remember they did around 50 for the MRI paper)
+
+- [x] decide on the number of parameters (256 x 256 images)
+
 
 # TODOS Theo
 
