@@ -41,7 +41,7 @@ class AudioPreprocessor:
         # ! TODO: Implement normalization
         pass
 
-    def get_mel_spectogram(self, audio, sr, n_mels=128):
+    def get_mel_spectogram(self, audio, sr, n_mels=256):
         """
         Extracts a Mel spectrogram from the audio.
         :param audio: Audio time series.
