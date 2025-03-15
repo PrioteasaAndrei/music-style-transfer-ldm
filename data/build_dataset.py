@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt  # added import for image saving
 from data.audio_processor import AudioPreprocessor
 
 
-CHUNK_SIZE = 5  # seconds
+CHUNK_SIZE = 3  # seconds
 # 1800 is 30 minutes (lowest duration in current videofiles -> all instruments have same duration then)
 MAX_DURATION = 1800  # maximum duration per file in seconds, None for no limit
 new_dataset = pd.DataFrame(columns=['spectogram', 'instrument', 'title', 'chunk_id'])
@@ -45,7 +45,7 @@ for mp3_file in mp3_files:
             chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
             
         # Extract features
-        spectogram = AudioPreprocessor.get_mel_spectogram(chunk, sr)
+        spectogram = AudioPreprocessor.get_mel_spectogram(chunk, sr, n_mels=256)
         
         #  Just testing
         image = AudioPreprocessor.mel_spectogram_to_grayscale_image(spectogram)
