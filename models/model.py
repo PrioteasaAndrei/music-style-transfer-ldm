@@ -107,14 +107,18 @@ class UNet(nn.Module):
         self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
         self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
 
+
     def forward(self, z, t, style_embedding=None):
         """
         z: Noisy latent spectrogram
         t: Diffusion timestep (for time conditioning)
-        style_embedding: Style embedding for cross-attention
+        style_embedding: Style embedding for cross-attention (in latent space)
         """
         # Process time embedding
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
+
+        if style_embedding is not None:
+            style_embedding = self.encoder(style_embedding)
 
         # Encoder
         z1 = F.relu(self.enc1(z))
@@ -201,66 +205,65 @@ class SinusoidalPositionEmbeddings(nn.Module):
     
 
 
-# class LatentDiffusionModel(nn.Module):
-#     def __init__(
-#         self,
-#         latent_dim=4,
-#         num_timesteps=100,
-#         device=None
-#     ):
-#         super().__init__()
-#         if device is None:
-#             self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-#         else:
-#             self.device = device
+class LatentDiffusionModel(nn.Module):
+    def __init__(
+        self,
+        latent_dim=4,
+        num_timesteps=100,
+        device=None
+    ):
+        super().__init__()
+        if device is None:
+            self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+        else:
+            self.device = device
 
-#         # Initialize components
-#         self.encoder = SpectrogramEncoder(latent_dim=latent_dim).to(self.device)
-#         self.decoder = SpectrogramDecoder(latent_dim=latent_dim).to(self.device)
-#         # TODO: add parameters to unet
-#         self.unet = UNet().to(self.device)
-#         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
+        # Initialize components
+        self.encoder = SpectrogramEncoder(latent_dim=latent_dim).to(self.device)
+        self.decoder = SpectrogramDecoder(latent_dim=latent_dim).to(self.device)
+        self.unet = UNet(num_timesteps=num_timesteps).to(self.device)
+        self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
 
-#     def encode(self, x):
-#         """Encode spectrogram to latent space"""
-#         return self.encoder(x)
+    def encode(self, x):
+        """Encode spectrogram to latent space"""
+        return self.encoder(x)
 
-#     def decode(self, z):
-#         """Decode latent representation back to spectrogram"""
-#         return self.decoder(z)
+    def decode(self, z):
+        """Decode latent representation back to spectrogram"""
+        return self.decoder(z)
 
-#     def diffuse(self, z_0, t):
-#         """Apply forward diffusion to latent"""
-#         return self.noise_scheduler(z_0, t)
+    def diffuse(self, z_0, t):
+        """Apply forward diffusion to latent"""
+        return self.noise_scheduler(z_0, t)
 
-#     def denoise(self, z_t, t):
-#         """Single denoising step"""
-#         return self.unet(z_t, t)
+    def denoise(self, z_t, t):
+        """Single denoising step"""
+        return self.unet(z_t, t)
 
-#     def sample(self, z_T, num_steps=50, eta=0.0):
-#         """Sample from noise using DDIM"""
-#         return ddim_sample(
-#             z_T, 
-#             self.unet,
-#             self.noise_scheduler.alpha_bar_t,
-#             self.noise_scheduler.beta_t,
-#             timesteps=num_steps,
-#             eta=eta
-#         )
+    def sample(self, z_T, num_steps=50, eta=0.0):
+        """Sample from noise using DDIM"""
+        return ddim_sample(
+            z_T, 
+            self.unet,
+            self.noise_scheduler.alpha_bar_t,
+            self.noise_scheduler.beta_t,
+            timesteps=num_steps,
+            eta=eta
+        )
 
-#     def forward(self, x, t):
-#         """
-#         Forward pass through the full model
-#         x: input spectrogram
-#         t: timesteps for diffusion
-#         """
-#         # Encode to latent space
-#         z_0 = self.encode(x)
+    def forward(self, x, t):
+        """
+        Forward pass through the full model
+        x: input spectrogram
+        t: timesteps for diffusion
+        """
+        # Encode to latent space
+        z_0 = self.encode(x)
         
-#         # Apply forward diffusion
-#         z_t, noise = self.diffuse(z_0, t)
+        # Apply forward diffusion
+        z_t, noise = self.diffuse(z_0, t)
         
-#         # Predict noise
-#         noise_pred = self.denoise(z_t, t)
+        # Predict noise
+        noise_pred = self.denoise(z_t, t)
         
-#         return z_t, noise, noise_pred
+        return z_t, noise, noise_pred

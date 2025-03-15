@@ -15,6 +15,11 @@ This project implements the framework described in the paper Music Style Transfe
 - OmegaConf for configs: <https://github.com/ashleve/lightning-hydra-template>
 
 # TODOs Andrei
+
+- [ ] 1. Train autoencoder and decoder separately just for reconstruction (with perceptual and KL loss) - decoder should not be then frozen during the actual training just the encoder
+      2. 
+
+
 - [ ] Implement skeleton for dataset
 - [ ] see if KL regularization is actually needed 
 - [ ] use pretrained LPIPS for perceptual loss during autoencoder training
