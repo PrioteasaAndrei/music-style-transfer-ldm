@@ -1,29 +1,38 @@
 import torch
 import os
 from torch.utils.data import Dataset, DataLoader
+import pandas as pd
+from PIL import Image
+from io import BytesIO
+from config import config
+import numpy as np
 
-class SpectrogramDataset(torch.utils.data.Dataset):
-    def __init__(self, num_samples=1000):
+class SpectrogramDataset(Dataset):
+    
+    def __init__(self,  config):
+        """Read the dataset from an .parquet file into a DataFrame
+
+        :param data_dir: Path to the directory containing the .parquet file
         """
-        Initialize dummy spectrogram dataset with random images
-        Args:
-            num_samples: Number of random spectrograms to generate
-        """
-        self.num_samples = num_samples
-        # Generate random spectrograms between -1 and 1 to match tanh output
-        self.data = torch.rand((num_samples, 1, 256, 256)) * 2 - 1
+        self.data_dir = config['data_dir']
+        self.file_name = config['file_name']
+        # Load DataFrame from .parquet file
+        self.df = pd.read_parquet(os.path.join(self.data_dir, self.file_name))
+        self.df.drop(columns=["title", "chunk_id"], inplace=True)
+        self.df.rename(columns={"instrument": "label"}, inplace=True)
 
     def __len__(self):
-        return self.num_samples
+        return len(self.df)
 
     def __getitem__(self, idx):
-        """
-        Returns:
-            spectrogram: Random spectrogram of shape [1, 256, 256] 
-                        with values in [-1, 1]
-        """
-        return self.data[idx]
-    
+        row = self.df.iloc[idx]
+        # Convert raw image bytes to a PIL image in grayscale
+        image = Image.open(BytesIO(row['spectogram'])).convert('L')
+        # Convert PIL image to tensor with values in [0,1]
+        image_tensor = torch.from_numpy(np.array(image)).float() / 255.0
+        image_tensor = image_tensor.unsqueeze(0) # Add channel dimension
+        img_label = (image_tensor, row['label'])
+        return img_label
 
 
 def prepare_dataset(config):
@@ -37,3 +46,12 @@ def prepare_dataset(config):
     test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, num_workers=4)
 
     return train_loader, test_loader
+
+
+if __name__ == "__main__":
+
+    dataset = SpectrogramDataset(config)
+    print(len(dataset))
+    train_loader, test_loader = prepare_dataset(config)
+    print(len(train_loader))
+    print(len(test_loader))

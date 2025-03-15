@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt  # added import for image saving
 from data.audio_processor import AudioPreprocessor
 
 
-CHUNK_SIZE = 5  # seconds
+CHUNK_SIZE = 3  # seconds
 # 1800 is 30 minutes (lowest duration in current videofiles -> all instruments have same duration then)
 MAX_DURATION = 1800  # maximum duration per file in seconds, None for no limit
 new_dataset = pd.DataFrame(columns=['spectogram', 'instrument', 'title', 'chunk_id'])
