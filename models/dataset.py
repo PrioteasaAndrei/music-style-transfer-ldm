@@ -10,10 +10,7 @@ import numpy as np
 class SpectrogramDataset(Dataset):
     
     def __init__(self,  config):
-        """Read the dataset from an .parquet file into a DataFrame
 
-        :param data_dir: Path to the directory containing the .parquet file
-        """
         self.data_dir = config['data_dir']
         self.file_name = config['file_name']
         # Load DataFrame from .parquet file
