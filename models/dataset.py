@@ -6,6 +6,10 @@ from PIL import Image
 from io import BytesIO
 from config import config
 import numpy as np
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 
 class SpectrogramDataset(Dataset):
     
@@ -25,6 +29,7 @@ class SpectrogramDataset(Dataset):
         row = self.df.iloc[idx]
         # Convert raw image bytes to a PIL image in grayscale
         image = Image.open(BytesIO(row['spectogram'])).convert('L')
+        image = image.crop((0, 0, 128, 128))
         # Convert PIL image to tensor with values in [0,1]
         image_tensor = torch.from_numpy(np.array(image)).float() / 255.0
         image_tensor = image_tensor.unsqueeze(0) # Add channel dimension
@@ -33,7 +38,7 @@ class SpectrogramDataset(Dataset):
 
 
 def prepare_dataset(config):
-    dataset = SpectrogramDataset()
+    dataset = SpectrogramDataset(config)
 
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
@@ -52,3 +57,14 @@ if __name__ == "__main__":
     train_loader, test_loader = prepare_dataset(config)
     print(len(train_loader))
     print(len(test_loader))
+
+    a = 0
+
+    for batch in train_loader:
+        a += 1
+        if a > 10:
+            break
+        print(batch[0].shape)
+        print(batch[1])
+        
+        print("--------------------------------")

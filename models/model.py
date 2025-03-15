@@ -39,6 +39,32 @@ class SpectrogramDecoder(nn.Module):
 
     def forward(self, z):
         return self.decoder(z)
+    
+
+class StyleEncoder(nn.Module):
+    """
+    Encodes the style spectrogram into multiple resolution embeddings
+    so that it can be injected into different layers of the U-Net.
+    """
+    def __init__(self, in_channels=1, num_filters=64):
+        super().__init__()
+
+        # Downsampling path
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
+
+    def forward(self, style_spectrogram):
+        """
+        Returns a dictionary of different resolution style embeddings.
+        """
+        s1 = F.relu(self.enc1(style_spectrogram))  # 256x256
+        s2 = F.relu(self.enc2(s1))  # 128x128
+        s3 = F.relu(self.enc3(s2))  # 64x64
+        s4 = F.relu(self.enc4(s3))  # 32x32
+
+        return { "s1": s1, "s2": s2, "s3": s3, "s4": s4 }  # Return different resolutions
 
 class ForwardDiffusion(nn.Module):
     def __init__(self, num_timesteps=1000):
@@ -73,13 +99,47 @@ class ForwardDiffusion(nn.Module):
         z_t = torch.sqrt(alpha_bar_t) * x_0 + torch.sqrt(1 - alpha_bar_t) * eps
         
         return z_t, eps
+    
+
+
+class CrossAttention(nn.Module):
+    """
+    Implements cross-attention for injecting style spectrogram information into the U-Net.
+    """
+    def __init__(self, embed_dim, num_heads=4):
+        super().__init__()
+        self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads)
+
+    def forward(self, unet_features, style_embedding):
+        """
+        unet_features: Feature map from U-Net (Q)
+        style_embedding: Encoded style spectrogram (K, V)
+        """
+        batch_size, c, h, w = unet_features.shape
+
+        # Reshape feature maps for attention
+        unet_features = unet_features.view(batch_size, c, h * w).permute(2, 0, 1)  # [H*W, B, C]
+        
+        # Reshape style_embedding from [1, 2, 256, 64, 64] to [B, C, H, W] format
+        style_embedding = style_embedding.squeeze(0)  # Remove first dim
+        style_embedding = style_embedding.view(batch_size, -1, h, w)  # Combine channels
+        
+        # Reshape for attention
+        style_embedding = style_embedding.view(batch_size, -1, h * w).permute(2, 0, 1)  # [H*W, B, C]
+        
+        # Apply cross-attention
+        attended_features, _ = self.multihead_attn(unet_features, style_embedding, style_embedding)
+
+        # Reshape back to feature map
+        attended_features = attended_features.permute(1, 2, 0).view(batch_size, c, h, w)
+
+        return attended_features
 
 
 class UNet(nn.Module):
-    def __init__(self, in_channels=1, out_channels=1, num_filters=64, num_timesteps=1000):
+    def __init__(self, in_channels=1, out_channels=1, num_filters=64):
         super(UNet, self).__init__()
 
-        
         # Define the channel dimensions used in your UNet
         time_emb_dim = 128  # This should match the channel dimension where you add the time embedding
         
@@ -94,19 +154,22 @@ class UNet(nn.Module):
         self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
         self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
         self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
 
-        self.cross_attention = nn.MultiheadAttention(embed_dim=num_filters * 4, num_heads=4)
+        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)
+        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 8, num_heads=4)
 
         # Bottleneck
-        self.bottleneck = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=1, padding=1)
+        self.bottleneck = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=1, padding=1)
 
         # Upsampling path
+        self.dec4 = nn.ConvTranspose2d(num_filters * 8, num_filters * 4, kernel_size=3, stride=2, padding=1, output_padding=1)  # 64x64
         self.dec3 = nn.ConvTranspose2d(num_filters * 4, num_filters * 2, kernel_size=3, stride=2, padding=1, output_padding=1)  # 128x128
         self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
         self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
 
 
-    def forward(self, z, t, style_embedding=None):
+    def forward(self, z, t, style_embedding: dict =None):
         """
         z: Noisy latent spectrogram
         t: Diffusion timestep (for time conditioning)
@@ -115,34 +178,27 @@ class UNet(nn.Module):
         # Process time embedding
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
 
-        if style_embedding is not None:
-            style_embedding = self.encoder(style_embedding)
-
         # Encoder
         z1 = F.relu(self.enc1(z))
         z2 = F.relu(self.enc2(z1)) + t_embedding  # Inject time conditioning
         z3 = F.relu(self.enc3(z2))
-
-        if style_embedding is not None:
-            batch_size, c, h, w = z3.shape
-            z3_flat = z3.view(batch_size, c, h * w).permute(2, 0, 1)  # Reshape for attention
-            style_embedding = style_embedding.unsqueeze(0).repeat(h * w, 1, 1)  # Match dimensions
-            z3_flat, _ = self.cross_attention(z3_flat, style_embedding, style_embedding)
-            z3 = z3_flat.permute(1, 2, 0).view(batch_size, c, h, w)  # Reshape back
+        z3 = self.cross_attention1(z3, style_embedding["s3"])
+        z4 = F.relu(self.enc4(z3))
+        z4 = self.cross_attention2(z4, style_embedding["s4"])
 
         # Bottleneck
-        bottleneck = F.relu(self.bottleneck(z3))
+        bottleneck = F.relu(self.bottleneck(z4))
 
         # Decoder - these are skip connections
-        z3_up = F.relu(self.dec3(bottleneck)) + z2
+        z4_up = F.relu(self.dec4(bottleneck)) + z3
+        z3_up = F.relu(self.dec3(z4_up)) + z2
         z2_up = F.relu(self.dec2(z3_up)) + z1
         output = self.dec1(z2_up)
 
         return output
-    
 
 # TODO: I still doubt the formulas are right here
-def ddim_sample(z_T, model, alpha_bar_t, beta_t, eta=0.0, timesteps=100):
+def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, eta=0.0, timesteps=100):
     """
     DDIM Reverse Sampling Process
 
@@ -167,7 +223,7 @@ def ddim_sample(z_T, model, alpha_bar_t, beta_t, eta=0.0, timesteps=100):
         t_float = t.float()
         
         with torch.no_grad():
-            noise_pred = model(z_T, t_float)
+            noise_pred = model(z_T, t_float, style_embedding)
             
             # Get alpha values and reshape for broadcasting
             alpha_bar_t_prev = alpha_bar_t[t].view(-1, 1, 1, 1)  # [B, 1, 1, 1]
@@ -202,65 +258,54 @@ class SinusoidalPositionEmbeddings(nn.Module):
         return embeddings
 
 
-class LatentDiffusionModel(nn.Module):
-    def __init__(
-        self,
-        latent_dim=4,
-        num_timesteps=100,
-        device=None
-    ):
-        super().__init__()
-        if device is None:
-            self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-        else:
-            self.device = device
+class LDM(nn.Module):
+    def __init__(self, num_filters=64, num_timesteps=100):
+        super(LDM, self).__init__()
+        self.encoder = SpectrogramEncoder(latent_dim=num_filters * 8) # NOTE: needs to be freezed after pretraining
+        self.decoder = SpectrogramDecoder(latent_dim=num_filters * 8) # NOTE: train with the unet starting from the pretrained
+        self.unet = UNet(in_channels=1, out_channels=1, num_filters=num_filters)
+        self.noise_scheduler = ForwardDiffusion(num_timesteps=1000)
+        self.style_encoder = StyleEncoder(in_channels=1, num_filters=num_filters)
 
-        # Initialize components
-        self.encoder = SpectrogramEncoder(latent_dim=latent_dim).to(self.device)
-        self.decoder = SpectrogramDecoder(latent_dim=latent_dim).to(self.device)
-        self.unet = UNet(num_timesteps=num_timesteps).to(self.device)
-        self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
+        # Diffusion parameters
+        self.num_timesteps = num_timesteps
+        self.beta_t, self.alpha_t, self.alpha_bar_t = self.get_noise_schedule(num_timesteps)
 
-    def encode(self, x):
-        """Encode spectrogram to latent space"""
-        return self.encoder(x)
 
-    def decode(self, z):
-        """Decode latent representation back to spectrogram"""
-        return self.decoder(z)
+    '''
+    TODO: these are not right I just copied them from chat gpt, but I need to adjust them to my code.
+    
+    '''
+    def get_noise_schedule(self, num_timesteps, beta_start=1e-4, beta_end=0.02):
+        """Creates the noise schedule used in DDIM."""
+        beta_t = torch.linspace(beta_start, beta_end, num_timesteps)
+        alpha_t = 1 - beta_t
+        alpha_bar_t = torch.cumprod(alpha_t, dim=0)
+        return beta_t, alpha_t, alpha_bar_t
 
-    def diffuse(self, z_0, t):
-        """Apply forward diffusion to latent"""
-        return self.noise_scheduler(z_0, t)
+    def forward(self, spectrogram, style_spectrogram, t):
+        """
+        Full forward pass of the LDM.
+        
+        spectrogram: Input spectrogram to transform.
+        style_spectrogram: Style reference.
+        t: Diffusion timestep.
+        """
+        with torch.no_grad():
+            # Encode spectrograms into latent space
+            z_0 = self.encoder(spectrogram)
+            style_embedding = self.style_encoder(style_spectrogram)
 
-    def denoise(self, z_t, t):
-        """Single denoising step"""
-        return self.unet(z_t, t)
+        # Sample Gaussian noise
+        noise = torch.randn_like(z_0)
 
-    def sample(self, z_T, num_steps=50, eta=0.0):
-        """Sample from noise using DDIM"""
-        return ddim_sample(
-            z_T, 
-            self.unet,
-            self.noise_scheduler.alpha_bar_t,
-            self.noise_scheduler.beta_t,
-            timesteps=num_steps,
-            eta=eta
+        # Forward diffusion: Add noise to latent at timestep t
+        noisy_latent = (
+            torch.sqrt(self.alpha_bar_t[t]).view(-1, 1, 1, 1) * z_0 +
+            torch.sqrt(1 - self.alpha_bar_t[t]).view(-1, 1, 1, 1) * noise
         )
 
-    def forward(self, x, t):
-        """
-        Forward pass through the full model
-        x: input spectrogram
-        t: timesteps for diffusion
-        """
-        # Encode to latent space
-        z_0 = self.encode(x)
-        
-        # Apply forward diffusion
-        z_t, noise = self.diffuse(z_0, t)
-        
-        # Predict noise
-        noise_pred = self.denoise(z_t, t)
-        
-        return z_t, noise, noise_pred
+        # Denoising step using U-Net (with cross-attention style conditioning)
+        noise_pred = self.unet(noisy_latent, style_embedding)
+
+        return noise_pred, noise

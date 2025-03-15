@@ -2,6 +2,9 @@ import torch
 import pytest
 from model import ddim_sample, ForwardDiffusion, UNet
 from model import SpectrogramEncoder, SpectrogramDecoder
+from config import config
+from model import StyleEncoder
+from dataset import SpectrogramDataset
 
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
@@ -11,14 +14,19 @@ def test_ddim_deterministic():
     height = width = 256
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     # Create test components
-    unet = UNet().to(device)
+    unet = UNet(num_filters=config['unet_num_filters']).to(device)
+    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
     diffusion = ForwardDiffusion()
+
+    dummy_style_spectrogram = torch.randn(batch_size, channels, height, width).to(device)
+    style_embedding = style_encoder(dummy_style_spectrogram)
+    
     z_T = torch.randn(batch_size, channels, height, width).to(device)
     
     # Run DDIM sampling twice with eta=0
     with torch.no_grad():
-        result1 = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0)
-        result2 = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0)
+        result1 = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
+        result2 = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
     
     # Check if results are identical
     assert torch.allclose(result1, result2), "DDIM sampling is not deterministic when eta=0"
@@ -32,12 +40,14 @@ def test_ddim_shape_preservation():
     height = width = 256
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    unet = UNet().to(device)
+    unet = UNet(num_filters=config['unet_num_filters']).to(device)
+    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
     diffusion = ForwardDiffusion()
+    style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
     z_T = torch.randn(batch_size, channels, height, width).to(device)
     
     with torch.no_grad():
-        result = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t)
+        result = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, style_embedding=style_embedding)
     
     assert result.shape == z_T.shape, f"Shape mismatch: {result.shape} != {z_T.shape}"
 
@@ -50,12 +60,14 @@ def test_ddim_value_range():
     height = width = 256
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    unet = UNet().to(device)
+    unet = UNet(num_filters=config['unet_num_filters']).to(device)
     diffusion = ForwardDiffusion()
+    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
+    style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
     z_T = torch.randn(batch_size, channels, height, width).to(device)
     
     with torch.no_grad():
-        result = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t)
+        result = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, style_embedding=style_embedding)
     
     # Check if values are finite
     assert torch.all(torch.isfinite(result)), "Output contains inf or nan values"
@@ -72,8 +84,10 @@ def test_forward_reverse_consistency():
     height = width = 256
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    unet = UNet().to(device)
+    unet = UNet(num_filters=config['unet_num_filters']).to(device)
     diffusion = ForwardDiffusion()
+    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
+    style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
     
     # Create a simple test image (e.g., a gradient)
     x_0 = torch.linspace(-1, 1, width).view(1, 1, 1, -1).repeat(batch_size, 1, height, 1).to(device)
@@ -83,7 +97,7 @@ def test_forward_reverse_consistency():
     with torch.no_grad():
         z_T, _ = diffusion(x_0, t)
         # Reverse the process
-        x_0_recovered = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0)
+        x_0_recovered = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
     
     # Stack the flattened tensors for correlation calculation
     correlation_input = torch.stack([
@@ -104,14 +118,16 @@ def test_sigma_t_behavior():
     height = width = 256
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    unet = UNet().to(device)
+    unet = UNet(num_filters=config['unet_num_filters']).to(device)
+    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
+    style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
     diffusion = ForwardDiffusion()
     z_T = torch.randn(batch_size, channels, height, width).to(device)
     
     # Test with eta = 0
     with torch.no_grad():
-        result_det = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0)
-        result_stoch = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=1)
+        result_det = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
+        result_stoch = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=1, style_embedding=style_embedding)
     
     # The stochastic result should be different from the deterministic one
     assert not torch.allclose(result_det, result_stoch), "Stochastic and deterministic results are identical"
@@ -206,14 +222,96 @@ def test_decoder_output_range():
         "Decoder output values outside tanh range [-1, 1]"
 
     print("Test decoder output range passed")
+
+
+def check_dataset_ranges(dataset, num_samples=100):
+    """
+    Check if images in the dataset are properly normalized between 0 and 1.
+    
+    Args:
+        dataset: SpectrogramDataset instance
+        num_samples: Number of samples to check (default: 100)
+    """
+    print(f"Checking {num_samples} samples from dataset of size {len(dataset)}")
+    
+    num_samples = min(num_samples, len(dataset))
+    all_good = True
+    
+    for idx in range(num_samples):
+        image_tensor, label = dataset[idx]
+        
+        min_val = image_tensor.min().item()
+        max_val = image_tensor.max().item()
+        mean_val = image_tensor.mean().item()
+        std_val = image_tensor.std().item()
+        
+        # Check if values are in range [0, 1]
+        if min_val < 0 or max_val > 1:
+            print(f"WARNING: Image {idx} (label: {label}) has values outside [0, 1] range!")
+            print(f"         Min: {min_val:.4f}, Max: {max_val:.4f}")
+            all_good = False
+        
+        # Print statistics for each image
+        print(f"Image {idx:3d} - Label: {label:10s} | "
+              f"Min: {min_val:.4f}, Max: {max_val:.4f}, "
+              f"Mean: {mean_val:.4f}, Std: {std_val:.4f}")
+    
+    if all_good:
+        print("\nAll checked images are properly normalized between 0 and 1!")
+    else:
+        print("\nWARNING: Some images have values outside the [0, 1] range!")
+
+def check_dataset_dimensions(dataset, expected_size=(256, 256)):
+    """
+    Check if all images in the dataset have the same dimensions.
+    
+    Args:
+        dataset: SpectrogramDataset instance
+        expected_size: Tuple of (height, width) that images should have
+    """
+    print(f"Checking dimensions for {len(dataset)} images...")
+    print(f"Expected size: {expected_size}")
+    
+    all_correct = True
+    incorrect_indices = []
+    
+    for idx in range(len(dataset)):
+        image_tensor, label = dataset[idx]
+        
+        # Get current image dimensions
+        channels, height, width = image_tensor.shape
+        current_size = (height, width)
+        
+        # Check if dimensions match expected
+        if current_size != expected_size or channels != 1:
+            all_correct = False
+            incorrect_indices.append(idx)
+            print(f"\nWARNING: Image {idx} (label: {label}) has incorrect dimensions!")
+            print(f"Expected: (1, {expected_size[0]}, {expected_size[1]})")
+            print(f"Got:      ({channels}, {height}, {width})")
+        
+        # Print progress every 1000 images
+        if (idx + 1) % 1000 == 0:
+            print(f"Checked {idx + 1}/{len(dataset)} images...")
+    
+    # Final report
+    if all_correct:
+        print(f"\nAll {len(dataset)} images have correct dimensions!")
+    else:
+        print(f"\nFound {len(incorrect_indices)} images with incorrect dimensions!")
+        print(f"Indices of incorrect images: {incorrect_indices}")
+
 if __name__ == "__main__":
-    test_ddim_deterministic()
-    test_ddim_shape_preservation()
-    test_ddim_value_range()
-    test_forward_reverse_consistency()
-    test_sigma_t_behavior()
-    test_encoder_dimensions()
-    test_decoder_dimensions()
-    test_encoder_decoder_pipeline()
-    test_decoder_output_range()
+    # test_ddim_deterministic()
+    # test_ddim_shape_preservation()
+    # test_ddim_value_range()
+    # test_forward_reverse_consistency()
+    # test_sigma_t_behavior()
+    # test_encoder_dimensions()
+    # test_decoder_dimensions()
+    # test_encoder_decoder_pipeline()
+    # test_decoder_output_range()
+    dataset = SpectrogramDataset(config)
+    check_dataset_ranges(dataset)
+    check_dataset_dimensions(dataset, (128, 128))
     print("All tests passed!")

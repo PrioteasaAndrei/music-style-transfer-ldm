@@ -45,7 +45,7 @@ for mp3_file in mp3_files:
             chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
             
         # Extract features
-        spectogram = AudioPreprocessor.get_mel_spectogram(chunk, sr, n_mels=256)
+        spectogram = AudioPreprocessor.get_mel_spectogram(chunk, sr, n_mels=128)
         
         #  Just testing
         image = AudioPreprocessor.mel_spectogram_to_grayscale_image(spectogram)

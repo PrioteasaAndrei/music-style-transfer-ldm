@@ -19,6 +19,10 @@ def kl_regularization_loss(latent):
     return torch.mean(0.5 * (latent.pow(2) - 1 - torch.log(latent.pow(2) + 1e-8)))
 
 def compression_loss(original, reconstructed, latent, feature_extractor=None):
+
+    # print("Original shape:", original.shape)
+    # print("Reconstructed shape:", reconstructed.shape)
+    # print("Latent shape:", latent.shape)
     mse_loss = nn.MSELoss()(reconstructed, original)
 
     # Perceptual loss (Optional)

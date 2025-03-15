@@ -16,18 +16,22 @@ This project implements the framework described in the paper Music Style Transfe
 
 # TODOs Andrei
 
+- [ ] redo the dataset with saved images it is too slow now
 - [ ] 1. Train autoencoder and decoder separately just for reconstruction (with perceptual and KL loss) - decoder should not be then frozen during the actual training just the encoder
       2. 
 
 
-- [ ] Implement skeleton for dataset
+
 - [ ] see if KL regularization is actually needed 
 - [ ] use pretrained LPIPS for perceptual loss during autoencoder training
 - [x] implement DDIM during sampling
   - [ ] check that DDIM actually works and see how many iterations you should do (remember they did around 50 for the MRI paper)
 
+
+- [x] create different style encoder for style spectogram
 - [x] decide on the number of parameters (256 x 256 images)
 - [x] see if you integrade pytorch lightning
+- [x] Implement skeleton for dataset
 
 
 # TODOS Theo

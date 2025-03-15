@@ -5,6 +5,7 @@ import torch.optim as optim
 from dataset import *
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from config import config
+import matplotlib.pyplot as plt
 
 def train_autoencoder(config):
     # Initialize components
@@ -26,12 +27,20 @@ def train_autoencoder(config):
 
     # Training loop
     num_epochs = config['num_epochs']  # Adjust as needed
+    losses = []  # Track losses for plotting
+    
+    from tqdm import tqdm
+    
     for epoch in range(num_epochs):
         running_loss = 0.0
         encoder.train()
         decoder.train()
 
-        for spectrogram in train_loader:  # Load spectrogram batches
+        # Create progress bar for batches
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        
+        for spectrogram in pbar:  # Load spectrogram batches
+            spectrogram = spectrogram[0]
             spectrogram = spectrogram.to(device)
 
             # Forward pass (Encode -> Decode)
@@ -40,14 +49,18 @@ def train_autoencoder(config):
 
             # Compute loss
             loss = compression_loss(spectrogram, reconstructed, latent, feature_extractor)
+            running_loss += loss.item()
 
             # Optimize
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
+            # Update progress bar
+            pbar.set_postfix({'loss': f'{loss.item():.4f}'})
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
         avg_loss = running_loss / len(train_loader)
+        losses.append(avg_loss)
         scheduler.step(avg_loss)
 
         # Print current learning rate
@@ -56,10 +69,20 @@ def train_autoencoder(config):
         print(f'Average Loss: {avg_loss:.6f}')
         print(f'Learning Rate: {current_lr:.6f}')
 
+    # Plot loss curve
+ 
+    plt.figure(figsize=(10, 5))
+    plt.plot(losses)
+    plt.title('Training Loss Over Time')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.savefig('models/plots/autoencoder_training_loss.png')
+    plt.close()
 
     # Save model
-    torch.save(encoder.state_dict(), 'pretrained/encoder.pth')
-    torch.save(decoder.state_dict(), 'pretrained/decoder.pth')
+    torch.save(encoder.state_dict(), 'models/pretrained/encoder.pth')
+    torch.save(decoder.state_dict(), 'models/pretrained/decoder.pth')
 
 
 
