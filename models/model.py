@@ -95,8 +95,6 @@ class UNet(nn.Module):
         self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
         self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
 
-        # Cross-attention mechanism for style transfer
-        # TODO
         self.cross_attention = nn.MultiheadAttention(embed_dim=num_filters * 4, num_heads=4)
 
         # Bottleneck
@@ -202,7 +200,6 @@ class SinusoidalPositionEmbeddings(nn.Module):
         embeddings = time[:, None] * embeddings[None, :]
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
-    
 
 
 class LatentDiffusionModel(nn.Module):

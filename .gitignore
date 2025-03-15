@@ -4,6 +4,9 @@ node_modules/
 # Local environment variables should not be committed.
 .env.local
 
+# Pretrained models
+pretrained/
+
 # Other Files
 features.npy
 downloads/*
