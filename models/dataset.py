@@ -2,6 +2,51 @@ import torch
 import os
 from torch.utils.data import Dataset, DataLoader
 
+# Additional imports for SpectrogramDatasetWithTransform 
+import pandas as pd
+from io import BytesIO
+from PIL import Image
+import torchvision.transforms as T
+
+class SpectrogramDatasetWithTransform(Dataset):
+    # TODO: Implement dataset
+    '''
+    15 000 spectrograms with labels
+    no augumantation
+    no transformations
+    normalized to 0-1 (not 0 255)
+    > 3 instruments
+    255 x 255
+    '''
+    
+    def __init__(self, data_dir: str = "../downloads", file_name: str = "processed_dataset.parquet"):
+        """Read the dataset from an .parquet file into a DataFrame
+
+        :param data_dir: Path to the directory containing the .parquet file
+        :param file_name: Name of the .parquet file
+        """
+        self.data_dir = data_dir
+        self.file_name = file_name
+        # Load DataFrame from .parquet file
+        self.df = pd.read_parquet(os.path.join(self.data_dir, self.file_name))
+        self.df.drop(columns=["title", "chunk_id"], inplace=True)
+        self.df.rename(columns={"instrument": "label"}, inplace=True)
+        self.transform = T.ToTensor()  # convert PIL image to tensor
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        # Convert raw image bytes to a PIL image in grayscale
+        image = Image.open(BytesIO(row['spectogram'])).convert('L')
+        # Convert image to tensor with values in [0,1]
+        image_tensor = self.transform(image)
+        img_label = (image_tensor, row['label'])
+        return img_label
+
+
+
 class SpectrogramDataset(torch.utils.data.Dataset):
     def __init__(self, num_samples=1000):
         """
