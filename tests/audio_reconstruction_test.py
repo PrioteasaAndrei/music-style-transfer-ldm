@@ -39,7 +39,7 @@ def main():
     print(f'Saved original audio chunk to {original_audio_path}')
     
     # Extract mel spectrogram
-    mel_spec = proc.get_mel_spectogram(chunk, sr, n_mels=256)
+    mel_spec = proc.get_mel_spectogram(chunk, sr, n_mels=128)
 
     # Convert mel spectrogram to grayscale image
     mel_img = proc.mel_spectogram_to_grayscale_image(mel_spec)

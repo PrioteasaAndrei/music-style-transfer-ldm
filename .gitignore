@@ -11,6 +11,7 @@ pretrained/
 features.npy
 downloads/*
 tests/downloads
+processed_images/
 
 # Log files
 *.log
