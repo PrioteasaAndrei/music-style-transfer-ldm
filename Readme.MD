@@ -15,7 +15,9 @@ This project implements the framework described in the paper Music Style Transfe
 - OmegaConf for configs: <https://github.com/ashleve/lightning-hydra-template>
 
 # TODOs Andrei
-
+AUTOENCODER IS NOT REALLY WORKING
+CHECK IF IT THE LATENT SPACE - train with new latent space (32) and check the test for improvements
+- [ ] remove lpips and see what changes
 - [ ] fix shape mismatch in the ldm
 - [ ] check that forward diffusion and ddim are correct
 - [ ] see if KL regularization is actually needed 

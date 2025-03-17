@@ -23,8 +23,8 @@ def train_autoencoder(config):
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
     # Load autoencoder
-    encoder = SpectrogramEncoder().to(device)
-    decoder = SpectrogramDecoder().to(device)
+    encoder = SpectrogramEncoder(config['latent_dim_encoder']).to(device)
+    decoder = SpectrogramDecoder(config['latent_dim_encoder']).to(device)
 
     # Feature extractor for perceptual loss (e.g., pretrained CNN on spectrograms)
     feature_extractor = None  # Set this to a pretrained model if needed
@@ -193,6 +193,15 @@ def train_ldm(config):
     trainer.train(config['num_epochs'])
 
 def main():
+    # Print help message
+    print("Usage: python train.py --model [autoencoder|ldm]")
+    print("\nOptions:")
+    print("  --model autoencoder    Train the autoencoder model for spectrogram reconstruction")
+    print("  --model ldm            Train the latent diffusion model for style transfer")
+    print("\nExample:")
+    print("  python train.py --model autoencoder    # Train autoencoder")
+    print("  python train.py --model ldm            # Train LDM")
+    print()
     parser = argparse.ArgumentParser(description='Train models')
     parser.add_argument('--model', type=str, required=True, choices=['autoencoder', 'ldm'],
                         help='Which model to train (autoencoder or ldm)')
