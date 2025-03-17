@@ -1,6 +1,8 @@
 import random
 import torch
 import os
+from os import PathLike
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 import csv
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
@@ -11,6 +13,12 @@ import numpy as np
 import sys
 from pathlib import Path
 from torchvision.datasets import ImageFolder
+from torchvision.datasets.folder import (
+    IMG_EXTENSIONS,
+    has_file_allowed_extension,
+    find_classes,
+    make_dataset as original_make_dataset,
+)
 from torchvision import transforms, datasets
 
 
@@ -108,6 +116,93 @@ class SpectrogramDataset(Dataset):
 #         )
 
 
+class ImageFolderNoSubdirs(ImageFolder):
+    """
+    Custom ImageFolder that, if no subdirectories are found in a given directory,
+    treats the directory itself as a single class.
+    """
+
+    def find_classes(self, directory):
+        # List directories inside the given directory.
+        subdirs = [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
+        if len(subdirs) == 0:
+            # If no subdirectories, use the directory name as the class.
+            class_name = os.path.basename(os.path.normpath(directory))
+            return [class_name], {class_name: 0}
+        else:
+            # Otherwise, follow the normal ImageFolder behavior.
+            return super().find_classes(directory)
+
+    @staticmethod
+    def make_dataset(
+        directory: Union[str, PathLike],
+        class_to_idx: Optional[Dict[str, int]] = None,
+        extensions: Optional[Union[str, Tuple[str, ...]]] = None,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
+        allow_empty: bool = False,
+    ) -> List[Tuple[str, int]]:
+        """Generates a list of samples of the form (path_to_sample, class).
+
+        Modified so that if the directory itself is the class folder
+        (i.e. its basename equals the target class) then files are searched in that directory.
+        """
+
+        directory = os.path.expanduser(directory)
+
+        if class_to_idx is None:
+            _, class_to_idx = find_classes(directory)
+        elif not class_to_idx:
+            raise ValueError("'class_to_idx' must have at least one entry to collect any samples.")
+
+        both_none = extensions is None and is_valid_file is None
+        both_something = extensions is not None and is_valid_file is not None
+        if both_none or both_something:
+            raise ValueError("Both extensions and is_valid_file cannot be None or not None at the same time")
+
+        if extensions is not None:
+
+            def is_valid_file(x: str) -> bool:
+                return has_file_allowed_extension(x, extensions)  # type: ignore[arg-type]
+
+        is_valid_file = cast(Callable[[str], bool], is_valid_file)
+
+        instances = []
+        available_classes = set()
+        for target_class in sorted(class_to_idx.keys()):
+            class_index = class_to_idx[target_class]
+            # If the current directory's basename equals the target class,
+            # assume the images are stored directly in 'directory'
+            if os.path.basename(os.path.normpath(directory)) == target_class:
+                target_dir = directory
+            else:
+                target_dir = os.path.join(directory, target_class)
+            # If target_dir does not exist, and we are in the case, use directory.
+            if not os.path.isdir(target_dir):
+                if os.path.basename(os.path.normpath(directory)) == target_class:
+                    target_dir = directory
+                else:
+                    continue
+            for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
+                for fname in sorted(fnames):
+                    path = os.path.join(root, fname)
+                    if is_valid_file(path):
+                        item = (path, class_index)
+                        instances.append(item)
+                        available_classes.add(target_class)
+
+        empty_classes = set(class_to_idx.keys()) - available_classes
+        if empty_classes and not allow_empty:
+            msg = f"Found no valid file for the classes {', '.join(sorted(empty_classes))}. "
+            if extensions is not None:
+                msg += (
+                    f"Supported extensions are: "
+                    f"{extensions if isinstance(extensions, str) else ', '.join(extensions)}"
+                )
+            raise FileNotFoundError(msg)
+
+        return instances
+
+
 class SpectrogramPairDataset(Dataset):
     def __init__(self, root_folder, pairing_file, transform=None):
         """
@@ -119,16 +214,16 @@ class SpectrogramPairDataset(Dataset):
         self.root_folder = root_folder
         self.pairing_file = pairing_file
         self.transform = transform if transform is not None else self._get_transform()
-        
+
         # Load the precomputed pairs from the CSV file.
         # Each row in the CSV should contain: label1, idx1, label2, idx2
         self.pairs = []
-        with open(self.pairing_file, 'r') as f:
+        with open(self.pairing_file, "r") as f:
             reader = csv.reader(f)
             for row in reader:
                 # Convert index strings to integers.
                 self.pairs.append((row[0], int(row[1]), row[2], int(row[3])))
-        
+
         # Build a dictionary of ImageFolder datasets keyed by label.
         self.datasets = {}
         # Sorting the subfolders ensures deterministic order.
@@ -136,18 +231,18 @@ class SpectrogramPairDataset(Dataset):
             folder_path = os.path.join(root_folder, folder)
             if os.path.isdir(folder_path):
                 # Assume the folder name is the label.
-                self.datasets[folder] = datasets.ImageFolder(root=folder_path, transform=self.transform)
-        
+                self.datasets[folder] = ImageFolderNoSubdirs(root=folder_path, transform=self.transform)
+
     def __len__(self):
         return len(self.pairs)
-    
+
     def __getitem__(self, index):
         # Use the index to get the predetermined pairing.
         label1, idx1, label2, idx2 = self.pairs[index]
         img1, _ = self.datasets[label1][idx1]
         img2, _ = self.datasets[label2][idx2]
         return (img1, label1), (img2, label2)
-    
+
     @classmethod
     def _get_transform(cls):
         """
@@ -164,32 +259,30 @@ class SpectrogramPairDataset(Dataset):
             ]
         )
 
-
     @classmethod
-    def generate_pairings(cls, root_folder, output_file_path='spectrogram_pair_dataset_pairings.csv', num_pairs=15000):
+    def generate_pairings(cls, root_folder, output_file_path="spectrogram_pair_dataset_pairings.csv", num_pairs=15000):
         """
         Generates a CSV file containing the predetermined pairings.
-        
+
         Args:
             root_folder (str): Root directory with subfolders for each label.
             output_file (str): Path where the CSV file will be saved.
             num_pairs (int): Number of pairs to generate.
         """
         # List of labels (i.e. subfolder names) sorted deterministically.
-        labels = sorted([
-            folder for folder in os.listdir(root_folder)
-            if os.path.isdir(os.path.join(root_folder, folder))
-        ])
-        
+        labels = sorted(
+            [folder for folder in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, folder))]
+        )
+
         if len(labels) < 2:
             raise ValueError("Need at least two classes to form pairs.")
-        
+
         # Create ImageFolder datasets for each label.
         datasets_dict = {}
         for label in labels:
             folder_path = os.path.join(root_folder, label)
-            datasets_dict[label] = datasets.ImageFolder(root=folder_path, transform=cls._get_transform())
-        
+            datasets_dict[label] = ImageFolderNoSubdirs(root=folder_path, transform=cls._get_transform())
+
         pairs = []
         # We precompute the pairs and save them as a file. Like this the future sampling is deterministic.
         rng = np.random.RandomState(42)
@@ -201,13 +294,14 @@ class SpectrogramPairDataset(Dataset):
             idx1 = rng.randint(0, len(ds1))
             idx2 = rng.randint(0, len(ds2))
             pairs.append((label1, idx1, label2, idx2))
-        
+
         # Write the pairs to a CSV file.
-        with open(output_file_path, 'w', newline='') as f:
+        with open(output_file_path, "w", newline="") as f:
             writer = csv.writer(f)
             for pair in pairs:
                 writer.writerow(pair)
         print(f"Pairings saved to {output_file_path}")
+
 
 def prepare_dataset(config):
     dataset = SpectrogramDataset(config)
@@ -268,5 +362,9 @@ if __name__ == "__main__":
         print("--------------------------------")
 
     print("Testing SpectrogramPairDataset\n")
+    SpectrogramPairDataset.generate_pairings(
+        config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"]
+    )
     dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
+    print(len(dataset))
     
