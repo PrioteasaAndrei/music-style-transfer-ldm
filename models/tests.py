@@ -4,7 +4,7 @@ from model import ddim_sample, ForwardDiffusion, UNet
 from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
-from dataset import prepare_dataset
+from dataset import SpectrogramDataset, prepare_dataset
 import torch
 import matplotlib.pyplot as plt
 
@@ -326,41 +326,32 @@ def test_autoencoder_reconstruction():
     encoder.eval()
     decoder.eval()
 
-    # get loaders
+    # Load dataset
     train_loader, test_loader = prepare_dataset(config)
+    # Get one batch from the test_loader (batch size should be > 5)
+    images, labels = next(iter(test_loader))
+    num_examples = min(5, images.size(0))
+    fig, axes = plt.subplots(2, num_examples, figsize=(15, 6))
     
-    # Select 5 random indices
-    indices = torch.randint(0, len(test_loader), (5,))
-
-    # Get some test samples
-    samples = []
     with torch.no_grad():
-        for i, (image, label) in enumerate(test_loader):
-            if i >= 4:  # Get 4 samples
-                break
-            image = image.to(device)
+        for idx in range(num_examples):
+            # Get image and label from the batch
+            image = images[idx].unsqueeze(0).to(device)  # Add batch dimension and send to device
+            label = labels[idx]
             
-            # Get reconstruction
+            # Get reconstruction from the encoder and decoder
             latent = encoder(image)
             reconstruction = decoder(latent)
             
-            # Store original and reconstruction
-            samples.append((image.cpu(), reconstruction.cpu(), label))
-    
-    
-    # Create figure
-    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
-    # Plot results
-    for idx, (original, reconstruction, label) in enumerate(samples):
-        # Plot original
-        axes[0, idx].imshow(original.squeeze(), cmap='gray')
-        axes[0, idx].set_title(f'Original ({label[0]})')
-        axes[0, idx].axis('off')
-        
-        # Plot reconstruction
-        axes[1, idx].imshow(reconstruction.squeeze(), cmap='gray')
-        axes[1, idx].set_title('Reconstruction')
-        axes[1, idx].axis('off')
+            # Plot original image
+            axes[0, idx].imshow(image.squeeze().cpu(), cmap='gray')
+            axes[0, idx].set_title(f'Original\n{label}')
+            axes[0, idx].axis('off')
+            
+            # Plot reconstructed image
+            axes[1, idx].imshow(reconstruction.squeeze().cpu(), cmap='gray')
+            axes[1, idx].set_title('Reconstruction')
+            axes[1, idx].axis('off')
     
     plt.tight_layout()
     plt.savefig('models/plots/autoencoder_reconstructions.png')
