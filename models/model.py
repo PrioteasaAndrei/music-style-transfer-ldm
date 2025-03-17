@@ -317,7 +317,7 @@ class LDM(nn.Module):
             self.decoder.train()
           
         # TODO: not checked
-        self.unet = UNet(in_channels=latent_dim, out_channels=1, num_filters=64)
+        self.unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=64)
         # TODO: not checked
         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
         self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
