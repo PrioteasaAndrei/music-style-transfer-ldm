@@ -367,4 +367,7 @@ if __name__ == "__main__":
     )
     dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
     print(len(dataset))
+
+    print(dataset[0])
+    print(dataset[1])
     

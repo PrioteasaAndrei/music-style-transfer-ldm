@@ -59,10 +59,13 @@ class StyleEncoder(nn.Module):
         """
         Returns a dictionary of different resolution style embeddings.
         """
+
+        
         s1 = F.relu(self.enc1(style_spectrogram))  # 256x256
         s2 = F.relu(self.enc2(s1))  # 128x128
         s3 = F.relu(self.enc3(s2))  # 64x64
         s4 = F.relu(self.enc4(s3))  # 32x32
+        
 
         return { "s1": s1, "s2": s2, "s3": s3, "s4": s4 }  # Return different resolutions
 
@@ -109,30 +112,33 @@ class CrossAttention(nn.Module):
     def __init__(self, embed_dim, num_heads=4):
         super().__init__()
         self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads)
+        self.embed_dim = embed_dim
 
     def forward(self, unet_features, style_embedding):
         """
-        unet_features: Feature map from U-Net (Q)
-        style_embedding: Encoded style spectrogram (K, V)
+        unet_features: Feature map from U-Net (Q) [B, C, H, W]
+        style_embedding: Encoded style spectrogram (K, V) [B, C, H, W]
         """
         batch_size, c, h, w = unet_features.shape
 
         # Reshape feature maps for attention
-        unet_features = unet_features.view(batch_size, c, h * w).permute(2, 0, 1)  # [H*W, B, C]
+        # [B, C, H, W] -> [H*W, B, C]
+        unet_features = unet_features.permute(2, 3, 0, 1)  # [H, W, B, C]
+        unet_features = unet_features.reshape(h * w, batch_size, c)  # [H*W, B, C]
         
-        # Reshape style_embedding from [1, 2, 256, 64, 64] to [B, C, H, W] format
-        style_embedding = style_embedding.squeeze(0)  # Remove first dim
-        style_embedding = style_embedding.view(batch_size, -1, h, w)  # Combine channels
-        
-        # Reshape for attention
-        style_embedding = style_embedding.view(batch_size, -1, h * w).permute(2, 0, 1)  # [H*W, B, C]
-        
+        # Reshape style_embedding
+        # [B, C, H, W] -> [H*W, B, C]
+        style_embedding = style_embedding.permute(2, 3, 0, 1)  # [H, W, B, C]
+        style_embedding = style_embedding.reshape(h * w, batch_size, c)  # [H*W, B, C]
+ 
         # Apply cross-attention
         attended_features, _ = self.multihead_attn(unet_features, style_embedding, style_embedding)
-
+        
         # Reshape back to feature map
-        attended_features = attended_features.permute(1, 2, 0).view(batch_size, c, h, w)
-
+        # [H*W, B, C] -> [B, C, H, W]
+        attended_features = attended_features.reshape(h, w, batch_size, c)  # [H, W, B, C]
+        attended_features = attended_features.permute(2, 3, 0, 1)  # [B, C, H, W]
+        
         return attended_features
 
 
@@ -150,24 +156,24 @@ class UNet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim),
         )
 
-        # Downsampling path
+        # Downsampling path with proper padding to maintain spatial dimensions
         self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
         self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
         self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
         self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
 
-        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)
-        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 8, num_heads=4)
+        # Cross attention layers with correct embedding dimensions
+        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)  # For 64x64 feature maps
+        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 8, num_heads=4)  # For 32x32 feature maps
 
         # Bottleneck
         self.bottleneck = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=1, padding=1)
 
-        # Upsampling path
+        # Upsampling path with proper padding to maintain spatial dimensions
         self.dec4 = nn.ConvTranspose2d(num_filters * 8, num_filters * 4, kernel_size=3, stride=2, padding=1, output_padding=1)  # 64x64
         self.dec3 = nn.ConvTranspose2d(num_filters * 4, num_filters * 2, kernel_size=3, stride=2, padding=1, output_padding=1)  # 128x128
         self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
         self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
-
 
     def forward(self, z, t, style_embedding: dict =None):
         """
@@ -179,20 +185,51 @@ class UNet(nn.Module):
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
 
         # Encoder
-        z1 = F.relu(self.enc1(z))
-        z2 = F.relu(self.enc2(z1)) + t_embedding  # Inject time conditioning
-        z3 = F.relu(self.enc3(z2))
+        z1 = F.relu(self.enc1(z))  # [B, 64, H, W]
+        z2 = F.relu(self.enc2(z1)) + t_embedding  # [B, 128, H/2, W/2]
+        z3 = F.relu(self.enc3(z2))  # [B, 256, H/4, W/4]
+
+        # Store original z3 for skip connection
+        z3_orig = z3
+        
+        # Ensure spatial dimensions match before cross-attention
+        if z3.shape[-1] != style_embedding['s3'].shape[-1] or z3.shape[-2] != style_embedding['s3'].shape[-2]:
+            z3 = F.interpolate(z3, size=style_embedding['s3'].shape[-2:], mode='bilinear', align_corners=False)
+        
         z3 = self.cross_attention1(z3, style_embedding["s3"])
-        z4 = F.relu(self.enc4(z3))
+        z4 = F.relu(self.enc4(z3))  # [B, 512, H/8, W/8]
+        
+        # Store original z4 for skip connection
+        z4_orig = z4
+        
+        # Ensure spatial dimensions match before cross-attention
+        if z4.shape[-1] != style_embedding['s4'].shape[-1] or z4.shape[-2] != style_embedding['s4'].shape[-2]:
+            z4 = F.interpolate(z4, size=style_embedding['s4'].shape[-2:], mode='bilinear', align_corners=False)
+            
         z4 = self.cross_attention2(z4, style_embedding["s4"])
 
         # Bottleneck
         bottleneck = F.relu(self.bottleneck(z4))
 
         # Decoder - these are skip connections
-        z4_up = F.relu(self.dec4(bottleneck)) + z3
-        z3_up = F.relu(self.dec3(z4_up)) + z2
-        z2_up = F.relu(self.dec2(z3_up)) + z1
+        z4_up = F.relu(self.dec4(bottleneck))
+        # Ensure z4_up matches z3_orig dimensions for skip connection
+        if z4_up.shape != z3_orig.shape:
+            z4_up = F.interpolate(z4_up, size=z3_orig.shape[-2:], mode='bilinear', align_corners=False)
+        z4_up = z4_up + z3_orig
+        
+        z3_up = F.relu(self.dec3(z4_up))
+        # Ensure z3_up matches z2 dimensions for skip connection
+        if z3_up.shape != z2.shape:
+            z3_up = F.interpolate(z3_up, size=z2.shape[-2:], mode='bilinear', align_corners=False)
+        z3_up = z3_up + z2
+        
+        z2_up = F.relu(self.dec2(z3_up))
+        # Ensure z2_up matches z1 dimensions for skip connection
+        if z2_up.shape != z1.shape:
+            z2_up = F.interpolate(z2_up, size=z1.shape[-2:], mode='bilinear', align_corners=False)
+        z2_up = z2_up + z1
+        
         output = self.dec1(z2_up)
 
         return output
@@ -267,10 +304,8 @@ class LDM(nn.Module):
         if pretrained_path:
             # load pretrained weights
             self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth'))
-            print(f"Loaded encoder from {pretrained_path + 'encoder.pth'}")
             self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth'))
-            print(f"Loaded decoder from {pretrained_path + 'decoder.pth'}")
-
+          
             # freeze pretrained weights
             for param in self.encoder.parameters():
                 param.requires_grad = False
@@ -282,7 +317,7 @@ class LDM(nn.Module):
             self.decoder.train()
           
         # TODO: not checked
-        self.unet = UNet(in_channels=1, out_channels=1, num_filters=64)
+        self.unet = UNet(in_channels=latent_dim, out_channels=1, num_filters=64)
         # TODO: not checked
         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
         self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
@@ -292,7 +327,6 @@ class LDM(nn.Module):
 
         x = x.float()
         style = style.float()
-        t = t.float()
 
         z_0 = self.encoder(x)
         style_embedding = self.style_encoder(style)

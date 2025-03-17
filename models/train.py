@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import argparse
 import yaml
 from tqdm import tqdm
+from loss import style_loss
 
 
 def train_autoencoder(config):
@@ -124,7 +125,6 @@ def train_autoencoder(config):
     torch.save(decoder.state_dict(), 'models/pretrained/decoder.pth')
 
 
-
 # TODO: this is fully uncheched
 class LDMTrainer:
     def __init__(
@@ -163,9 +163,9 @@ class LDMTrainer:
   
         denoisinsg_loss = diffusion_loss(noise_pred, noise)
         autoencoder_loss = compression_loss(content_spec, reconstructed, z_0)
-        style_loss = style_loss(reconstructed, style_spec)
+        style_loss_ = style_loss(reconstructed, style_spec)
         
-        total_loss = autoencoder_loss + denoisinsg_loss + style_loss_weight * style_loss
+        total_loss = autoencoder_loss + denoisinsg_loss + style_loss_weight * style_loss_
         
         # Backward pass
         total_loss.backward()
@@ -174,11 +174,10 @@ class LDMTrainer:
         return {
             'autoencoder_loss': autoencoder_loss.item(),
             'denoisinsg_loss': denoisinsg_loss.item(),
-            'style_loss': style_loss.item(),
+            'style_loss': style_loss_.item(),
             'total_loss': total_loss.item()
         }
     
-    # TODO: this assumes a dataset with pairs of spectograms and style spectograms
     def train_epoch(self, epoch):
         """Train for one epoch"""
         self.model.train()
@@ -186,7 +185,11 @@ class LDMTrainer:
         num_batches = len(self.train_loader)
         
         with tqdm(self.train_loader, desc=f'Epoch {epoch}') as pbar:
-            for batch_idx, (content_spec, style_spec) in enumerate(pbar):
+            for batch_idx, element in enumerate(pbar):
+                # Correct unpacking of the batch
+                (content_spec, content_label), (style_spec, style_label) = element
+                # print(content_spec.shape)  # You can keep this if needed
+                
                 # Move data to device
                 content_spec = content_spec.to(self.device)
                 style_spec = style_spec.to(self.device)
@@ -214,22 +217,19 @@ class LDMTrainer:
 def train_ldm(config):
     # Initialize components
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
     # will automatically load pretrained weights
     model = LDM(latent_dim=config['latent_dim_encoder']).to(device)
-    train_loader, test_loader = prepare_dataset(config)
+
+    style_dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
+    train_dataset, test_dataset = torch.utils.data.random_split(style_dataset, [0.8, 0.2])
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+
     trainer = LDMTrainer(model, train_loader, device, lr=config['learning_rate'])
     trainer.train(config['num_epochs'])
 
 def main():
-    # Print help message
-    print("Usage: python train.py --model [autoencoder|ldm]")
-    print("\nOptions:")
-    print("  --model autoencoder    Train the autoencoder model for spectrogram reconstruction")
-    print("  --model ldm            Train the latent diffusion model for style transfer")
-    print("\nExample:")
-    print("  python train.py --model autoencoder    # Train autoencoder")
-    print("  python train.py --model ldm            # Train LDM")
-    print()
     parser = argparse.ArgumentParser(description='Train models')
     parser.add_argument('--model', type=str, required=True, choices=['autoencoder', 'ldm'],
                         help='Which model to train (autoencoder or ldm)')
