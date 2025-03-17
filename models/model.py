@@ -259,53 +259,74 @@ class SinusoidalPositionEmbeddings(nn.Module):
 
 
 class LDM(nn.Module):
-    def __init__(self, num_filters=64, num_timesteps=100):
+    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=100):
         super(LDM, self).__init__()
-        self.encoder = SpectrogramEncoder(latent_dim=num_filters * 8) # NOTE: needs to be freezed after pretraining
-        self.decoder = SpectrogramDecoder(latent_dim=num_filters * 8) # NOTE: train with the unet starting from the pretrained
-        self.unet = UNet(in_channels=1, out_channels=1, num_filters=num_filters)
-        self.noise_scheduler = ForwardDiffusion(num_timesteps=1000)
-        self.style_encoder = StyleEncoder(in_channels=1, num_filters=num_filters)
+        self.encoder = SpectrogramEncoder(latent_dim=latent_dim) # NOTE: needs to be freezed after pretraining
+        self.decoder = SpectrogramDecoder(latent_dim=latent_dim) # NOTE: train with the unet starting from the pretrained
 
-        # Diffusion parameters
+        if pretrained_path:
+            # load pretrained weights
+            self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth'))
+            print(f"Loaded encoder from {pretrained_path + 'encoder.pth'}")
+            self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth'))
+            print(f"Loaded decoder from {pretrained_path + 'decoder.pth'}")
+
+            # freeze pretrained weights
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+            
+            for param in self.decoder.parameters():
+                param.requires_grad = True
+
+            self.encoder.eval()
+            self.decoder.train()
+          
+        # TODO: not checked
+        self.unet = UNet(in_channels=1, out_channels=1, num_filters=64)
+        # TODO: not checked
+        self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
+        self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
         self.num_timesteps = num_timesteps
-        self.beta_t, self.alpha_t, self.alpha_bar_t = self.get_noise_schedule(num_timesteps)
 
+    def forward(self, x, style, t):
 
-    '''
-    TODO: these are not right I just copied them from chat gpt, but I need to adjust them to my code.
+        x = x.float()
+        style = style.float()
+        t = t.float()
+
+        z_0 = self.encoder(x)
+        style_embedding = self.style_encoder(style)
+        z_t, noise = self.noise_scheduler(z_0, t)
+        noise_pred = self.unet(z_t, t, style_embedding)
+        reconstructed = self.decoder(z_0)
+
+        return z_t, noise, noise_pred, z_0, reconstructed
     
-    '''
-    def get_noise_schedule(self, num_timesteps, beta_start=1e-4, beta_end=0.02):
-        """Creates the noise schedule used in DDIM."""
-        beta_t = torch.linspace(beta_start, beta_end, num_timesteps)
-        alpha_t = 1 - beta_t
-        alpha_bar_t = torch.cumprod(alpha_t, dim=0)
-        return beta_t, alpha_t, alpha_bar_t
-
-    def forward(self, spectrogram, style_spectrogram, t):
+    def sample(self, z_T, style, num_steps=50, eta=0.0):
         """
-        Full forward pass of the LDM.
+        Sample from noise using DDIM with style conditioning
         
-        spectrogram: Input spectrogram to transform.
-        style_spectrogram: Style reference.
-        t: Diffusion timestep.
+        Args:
+            z_T: Initial noise
+            style: Style spectrogram to condition on
+            num_steps: Number of deno ising steps
+            eta: Controls the stochasticity (0 = deterministic)
         """
-        with torch.no_grad():
-            # Encode spectrograms into latent space
-            z_0 = self.encoder(spectrogram)
-            style_embedding = self.style_encoder(style_spectrogram)
-
-        # Sample Gaussian noise
-        noise = torch.randn_like(z_0)
-
-        # Forward diffusion: Add noise to latent at timestep t
-        noisy_latent = (
-            torch.sqrt(self.alpha_bar_t[t]).view(-1, 1, 1, 1) * z_0 +
-            torch.sqrt(1 - self.alpha_bar_t[t]).view(-1, 1, 1, 1) * noise
+        # Get style embeddings
+        style_embedding = self.style_encoder(style)
+        
+        # Sample using DDIM
+        z_0 = ddim_sample(
+            z_T, 
+            self.unet,
+            self.alpha_bar_t,
+            self.beta_t,
+            style_embedding=style_embedding,
+            eta=eta,
+            timesteps=num_steps
         )
+        
+        # Decode to spectrogram
+        return self.decoder(z_0)
 
-        # Denoising step using U-Net (with cross-attention style conditioning)
-        noise_pred = self.unet(noisy_latent, style_embedding)
-
-        return noise_pred, noise
+    

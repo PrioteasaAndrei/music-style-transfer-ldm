@@ -6,6 +6,8 @@ config = {
     'learning_rate_min': 1e-6,
     'num_epochs': 50,
     'batch_size': 32,
+    'style_loss_weight': 0.1,
+    'latent_dim_encoder': 4,
     'data_dir': 'downloads/',
     'file_name': 'processed_dataset.parquet',
     'unet_num_filters': 64,
