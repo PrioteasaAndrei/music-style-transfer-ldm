@@ -4,7 +4,7 @@ from model import ddim_sample, ForwardDiffusion, UNet
 from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
-from dataset import prepare_dataset
+from dataset import SpectrogramDataset, prepare_dataset
 import torch
 import matplotlib.pyplot as plt
 
