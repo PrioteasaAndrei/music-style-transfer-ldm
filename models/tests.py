@@ -5,6 +5,8 @@ from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
 from dataset import SpectrogramDataset
+import torch
+import matplotlib.pyplot as plt
 
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
@@ -301,6 +303,64 @@ def check_dataset_dimensions(dataset, expected_size=(256, 256)):
         print(f"\nFound {len(incorrect_indices)} images with incorrect dimensions!")
         print(f"Indices of incorrect images: {incorrect_indices}")
 
+
+# TODO: fix path error
+def test_autoencoder_reconstruction():
+    """
+    Load pretrained autoencoder and decoder, reconstruct 5 random images from dataset
+    and plot them side by side with originals.
+    """
+
+    # Set device
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    # Load models
+    encoder = SpectrogramEncoder().to(device)
+    decoder = SpectrogramDecoder().to(device)
+    
+    # Load pretrained weights
+    encoder.load_state_dict(torch.load('models/pretrained/encoder.pth'))
+    decoder.load_state_dict(torch.load('models/pretrained/decoder.pth'))
+    
+    # Set to eval mode
+    encoder.eval()
+    decoder.eval()
+
+    # Get dataset
+    dataset = SpectrogramDataset(config)
+    
+    # Select 5 random indices
+    indices = torch.randint(0, len(dataset), (5,))
+    
+    # Create figure
+    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+    
+    with torch.no_grad():
+        for idx, ax_idx in enumerate(indices):
+            # Get original image
+            image, label = dataset[ax_idx]
+            image = image.unsqueeze(0).to(device)  # Add batch dimension
+            
+            # Get reconstruction
+            latent = encoder(image)
+            reconstruction = decoder(latent)
+            
+            # Plot original
+            axes[0, idx].imshow(image.squeeze().cpu(), cmap='gray')
+            axes[0, idx].set_title(f'Original\n{label}')
+            axes[0, idx].axis('off')
+            
+            # Plot reconstruction
+            axes[1, idx].imshow(reconstruction.squeeze().cpu(), cmap='gray')
+            axes[1, idx].set_title('Reconstruction')
+            axes[1, idx].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('models/plots/autoencoder_reconstructions.png')
+    plt.close()
+    print("Reconstruction test complete. Check models/plots/autoencoder_reconstructions.png")
+
+
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
@@ -311,7 +371,8 @@ if __name__ == "__main__":
     # test_decoder_dimensions()
     # test_encoder_decoder_pipeline()
     # test_decoder_output_range()
-    dataset = SpectrogramDataset(config)
-    check_dataset_ranges(dataset)
-    check_dataset_dimensions(dataset, (128, 128))
+    # dataset = SpectrogramDataset(config)
+    # check_dataset_ranges(dataset)
+    # check_dataset_dimensions(dataset, (128, 128))
+    test_autoencoder_reconstruction()
     print("All tests passed!")

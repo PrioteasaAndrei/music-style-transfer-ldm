@@ -16,7 +16,7 @@ This project implements the framework described in the paper Music Style Transfe
 
 # TODOs Andrei
 
-- [ ] redo the dataset with saved images it is too slow now
+- [ ] define and fix final LDM model
 - [ ] 1. Train autoencoder and decoder separately just for reconstruction (with perceptual and KL loss) - decoder should not be then frozen during the actual training just the encoder
       2. 
 
@@ -42,3 +42,6 @@ This project implements the framework described in the paper Music Style Transfe
 - [ ] Why are the db in the reconstructed songs so different? Does changing normalization affect this? Can we just adjust volume?
 - [ ] Statistics on the spectograms -> By label (maybe plot 16 spectograms per label) Do patterns emerge?
 - [ ] Complete Dataset in different pytorch format
+
+
+- [x] redo the dataset with saved images it is too slow now
