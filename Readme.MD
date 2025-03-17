@@ -19,6 +19,7 @@ AUTOENCODER IS NOT REALLY WORKING
 CHECK IF IT THE LATENT SPACE - train with new latent space (32) and check the test for improvements
 - [ ] remove lpips and see what changes
 - [ ] fix shape mismatch in the ldm
+- [ ] balance number of parameters of the two networks if one is much bigger the other will not learn
 - [ ] check that forward diffusion and ddim are correct
 - [ ] see if KL regularization is actually needed 
 

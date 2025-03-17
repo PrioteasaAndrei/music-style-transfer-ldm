@@ -38,12 +38,12 @@ def train_autoencoder(config):
 
     # Training loop
     num_epochs = config['num_epochs']  # Adjust as needed
-    losses = []  # Track losses for plotting
-    
-    from tqdm import tqdm
+    train_losses = []  # Track losses for plotting
+    val_losses = []
+    best_val_loss = float('inf')
     
     for epoch in range(num_epochs):
-        running_loss = 0.0
+        running_train_loss = 0.0
         encoder.train()
         decoder.train()
 
@@ -60,7 +60,7 @@ def train_autoencoder(config):
 
             # Compute loss
             loss = compression_loss(spectrogram, reconstructed, latent, feature_extractor)
-            running_loss += loss.item()
+            running_train_loss += loss.item()
 
             # Optimize
             optimizer.zero_grad()
@@ -68,27 +68,55 @@ def train_autoencoder(config):
             optimizer.step()
             
             # Update progress bar
-            pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+            pbar.set_postfix({'train_loss': f'{loss.item():.4f}'})
 
-        avg_loss = running_loss / len(train_loader)
-        losses.append(avg_loss)
-        scheduler.step(avg_loss)
+        avg_train_loss = running_train_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
 
+
+        encoder.eval()
+        decoder.eval()
+
+        running_val_loss = 0.0
+        with torch.no_grad():
+            for spectrogram in test_loader:
+                spectrogram = spectrogram[0]
+                spectrogram = spectrogram.to(device)
+
+                latent = encoder(spectrogram)
+                reconstructed = decoder(latent)
+
+                val_loss = compression_loss(spectrogram, reconstructed, latent, feature_extractor)
+                running_val_loss += val_loss.item()
+
+        avg_val_loss = running_val_loss / len(test_loader)
+        val_losses.append(avg_val_loss)
+
+        scheduler.step(avg_val_loss)
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(encoder.state_dict(), 'models/pretrained/encoder.pth')
+            torch.save(decoder.state_dict(), 'models/pretrained/decoder.pth')
+        
         # Print current learning rate
         current_lr = optimizer.param_groups[0]['lr']
         print(f'Epoch: {epoch}')
-        print(f'Average Loss: {avg_loss:.6f}')
+        print(f'Average Train Loss: {avg_train_loss:.6f}')
+        print(f'Average Val Loss: {avg_val_loss:.6f}')
         print(f'Learning Rate: {current_lr:.6f}')
 
     # Plot loss curve
  
     plt.figure(figsize=(10, 5))
-    plt.plot(losses)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Val Loss')
     plt.title('Training Loss Over Time')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.grid(True)
-    plt.savefig('models/plots/autoencoder_training_loss.png')
+    plt.legend()
+    plt.savefig('models/plots/autoencoder_loss.png')
     plt.close()
 
     # Save model
@@ -213,7 +241,6 @@ def main():
         train_autoencoder(config)
     elif args.model == 'ldm':
         train_ldm(config)
-    train_autoencoder(config)
 
 if __name__ == "__main__":
     main()
