@@ -370,6 +370,14 @@ def test_style_encoder_dimensions():
     # Create model
     style_encoder = StyleEncoder(in_channels=channels, num_filters=64).to(device)
 
+    # Print total number of parameters
+    total_params = sum(p.numel() for p in style_encoder.parameters())
+    print(f"\nTotal number of parameters in StyleEncoder: {total_params:,}")
+    
+    # Print trainable parameters
+    trainable_params = sum(p.numel() for p in style_encoder.parameters() if p.requires_grad)
+    print(f"Trainable parameters in StyleEncoder: {trainable_params:,}\n")
+
     # Create dummy input
     style_spectrogram = torch.randn(batch_size, channels, height, width).to(device)
 
@@ -385,8 +393,8 @@ def test_style_encoder_dimensions():
         "s1": (batch_size, 64, 64, 64),
         "s2": (batch_size, 128, 32, 32),
         "s3": (batch_size, 256, 16, 16),
-        "s4": (batch_size, 512, 8, 8),
-        "s5": (batch_size, 512, 4, 4),
+        "s4": (batch_size, 256, 8, 8),
+        "s5": (batch_size, 256, 4, 4),
         "s6": (batch_size, 512, 2, 2)
     }
 
@@ -408,6 +416,14 @@ def test_unet_dimensions():
     # Create model
     unet = UNet(in_channels=channels, out_channels=channels, num_filters=64).to(device)
 
+    # Print total number of parameters
+    total_params = sum(p.numel() for p in unet.parameters())
+    print(f"\nTotal number of parameters in UNet: {total_params:,}")
+    
+    # Print trainable parameters
+    trainable_params = sum(p.numel() for p in unet.parameters() if p.requires_grad)
+    print(f"Trainable parameters in UNet: {trainable_params:,}\n")
+
     # Create dummy input
     x = torch.randn(batch_size, channels, height, width).to(device)
 
@@ -416,10 +432,13 @@ def test_unet_dimensions():
     t = torch.zeros(batch_size).to(device)  # Timestep 0 for all samples
     # Create dummy style embeddings matching expected dimensions
     style_embeddings = {
-        "s4": torch.randn(batch_size, 512, 8, 8).to(device),  # Match z1 channels
-        "s5": torch.randn(batch_size, 512, 4, 4).to(device)   # Match z3 channels
+        "s1": torch.randn(batch_size, 64, 64, 64).to(device),
+        "s2": torch.randn(batch_size, 128, 32, 32).to(device),
+        "s3": torch.randn(batch_size, 256, 16, 16).to(device),
+        "s4": torch.randn(batch_size, 256, 8, 8).to(device),
+        "s5": torch.randn(batch_size, 256, 4, 4).to(device),
+        "s6": torch.randn(batch_size, 512, 2, 2).to(device)
     }
-    
     z = unet(x, t, style_embeddings)
 
     # Check if output dimensions match expected

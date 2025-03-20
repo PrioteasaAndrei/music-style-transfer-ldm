@@ -159,7 +159,13 @@ class LDMTrainer:
         t = torch.randint(0, self.model.num_timesteps, (batch_size,), device=self.device)
         
         # Forward pass through model
-        z_t, noise, noise_pred, z_0, reconstructed = self.model(content_spec, style_spec, t)
+        outputs = self.model(content_spec, style_spec, t)
+
+        noise_pred = outputs['noise_pred']
+        noise = outputs['noise']
+        z_0 = outputs['z_0']
+        reconstructed = outputs['reconstructed']
+        z_t = outputs['z_t']
   
         denoisinsg_loss = diffusion_loss(noise_pred, noise)
         autoencoder_loss = compression_loss(content_spec, reconstructed, z_0)

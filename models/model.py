@@ -61,9 +61,11 @@ class StyleEncoder(nn.Module):
         self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=2, padding=1)      # 64x64
         self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 32x32
         self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 16x16
-        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 8x8
-        # Keep enc5 output channels same as enc4 to maintain 512 channels
-        self.enc5 = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 4x4
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 8x8
+        # Reduce channels to 256 for enc5
+        self.enc5 = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 4x4
+        # Add enc6 with 512 channels and stride 2 to get 2x2
+        self.enc6 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 2x2
 
     def forward(self, style_spectrogram):
         """
@@ -74,13 +76,15 @@ class StyleEncoder(nn.Module):
         s3 = F.relu(self.enc3(s2))                # 16x16
         s4 = F.relu(self.enc4(s3))                # 8x8
         s5 = F.relu(self.enc5(s4))                # 4x4
+        s6 = F.relu(self.enc6(s5))                # 2x2
 
         return {
             "s1": s1,  # [4, 64, 64, 64]
             "s2": s2,  # [4, 128, 32, 32]
             "s3": s3,  # [4, 256, 16, 16]
-            "s4": s4,  # [4, 512, 8, 8]
-            "s5": s5,  # [4, 512, 4, 4]    # matches z3's channels
+            "s4": s4,  # [4, 256, 8, 8]
+            "s5": s5,  # [4, 256, 4, 4]
+            "s6": s6,  # [4, 512, 2, 2]
         }
 
 class ForwardDiffusion(nn.Module):
@@ -177,8 +181,8 @@ class UNet(nn.Module):
         self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
 
         # Cross attention layers with correct embedding dimensions
-        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 2, num_heads=4)  # For 64x64 feature maps
-        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)  # For 32x32 feature maps
+        self.cross_attention1 = CrossAttention(embed_dim=512, num_heads=4)  # For 2x2 feature maps with 512 channels
+        self.cross_attention2 = CrossAttention(embed_dim=256, num_heads=4)  # For 4x4 feature maps with 256 channels
 
         # Bottleneck
         self.bottleneck = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=1, padding=1)
@@ -202,27 +206,29 @@ class UNet(nn.Module):
         z2 = F.relu(self.enc2(z1)) + t_embedding 
         # Apply cross attention to z2 using style embedding s6
         z2_original = z2
-        # Print style embedding and z2 dimensions
-        print(f"z2 shape: {z2.shape}")
-        print(f"style_embedding['s4'] shape: {style_embedding['s4'].shape}")
-        z2 = self.cross_attention1(z2, style_embedding["s4"])
         z3 = F.relu(self.enc3(z2))
         z3_original = z3
         z3 = self.cross_attention2(z3, style_embedding["s5"])
         z4 = F.relu(self.enc4(z3))
+        z4_original = z4
+        z4 = self.cross_attention1(z4, style_embedding["s6"])
         
         # Bottleneck
         z4 = F.relu(self.bottleneck(z4))
 
-        # Decoder with skip connections and time embedding
-        z = F.relu(self.dec4(z4))
-        z = z + z3_original  # Skip connection from pre-attention z3
-        z = F.relu(self.dec3(z))
-        z = z + z2_original  # Skip connection from pre-attention z2
-        z = F.relu(self.dec2(z))
-        z = z + z1  # Skip connection
-        z = self.dec1(z)
-        return z
+        # Decoder with skip connections
+        z4 = F.relu(self.dec4(z4))
+        z4 = z4 + z3_original  # Skip connection to z3
+        
+        z3 = F.relu(self.dec3(z4))
+        z3 = z3 + z2_original  # Skip connection to z2
+        
+        z2 = F.relu(self.dec2(z3))
+        z2 = z2 + z1  # Skip connection to z1
+        
+        z1 = self.dec1(z2)
+        
+        return z1
 
 # TODO: I still doubt the formulas are right here
 def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, eta=0.0, timesteps=100):
@@ -286,7 +292,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
 
 
 class LDM(nn.Module):
-    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=100):
+    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=config['forward_diffusion_num_timesteps']):
         super(LDM, self).__init__()
         self.encoder = SpectrogramEncoder(latent_dim=latent_dim) # NOTE: needs to be freezed after pretraining
         self.decoder = SpectrogramDecoder(latent_dim=latent_dim) # NOTE: train with the unet starting from the pretrained
