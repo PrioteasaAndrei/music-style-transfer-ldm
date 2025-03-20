@@ -139,8 +139,8 @@ def test_encoder_dimensions():
     """Test if encoder preserves expected dimensions"""
     batch_size = 4
     input_channels = 1
-    height = width = 256
-    latent_dim = 4
+    height = width = 128
+    latent_dim = config['latent_dim_encoder']
     
     # Create encoder
     encoder = SpectrogramEncoder(latent_dim=latent_dim)
@@ -153,6 +153,7 @@ def test_encoder_dimensions():
     
     # Expected output dimensions: [batch_size, latent_dim, height//32, width//32]
     expected_shape = (batch_size, latent_dim, height//32, width//32)
+    print(f"Expected shape: {expected_shape}, got: {latent.shape}")
     assert latent.shape == expected_shape, f"Expected shape {expected_shape}, got {latent.shape}"
 
     print("Test encoder dimensions passed")
@@ -358,18 +359,64 @@ def test_autoencoder_reconstruction():
     print("Reconstruction test complete. Check models/plots/autoencoder_reconstructions.png")
 
 
+
+def test_style_encoder_dimensions():
+    """Test if StyleEncoder outputs correct dimensions at each resolution level"""
+    batch_size = 4
+    channels = 1
+    height = width = 128
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    # Create model
+    style_encoder = StyleEncoder(in_channels=channels, num_filters=64).to(device)
+
+    # Create dummy input
+    style_spectrogram = torch.randn(batch_size, channels, height, width).to(device)
+
+    # Get style embeddings
+    style_embeddings = style_encoder(style_spectrogram)
+
+    # Check each resolution level
+    expected_shapes = {
+        "s1": (batch_size, 64, 128, 128),      # Original resolution
+        "s2": (batch_size, 128, 64, 64),       # /2
+        "s3": (batch_size, 256, 32, 32),       # /4
+        "s4": (batch_size, 512, 16, 16),       # /8
+        "s5": (batch_size, 256, 8, 8),         # /16
+        "s6": (batch_size, 64, 4, 4),          # /32
+        "s7": (batch_size, 128, 2, 2)          # /64
+    }
+
+    for key, expected_shape in expected_shapes.items():
+        assert style_embeddings[key].shape == expected_shape, \
+            f"Style embedding {key} shape mismatch. Expected {expected_shape}, got {style_embeddings[key].shape}"
+
+    print("Test style encoder dimensions passed")
+
+
+# TODO: make a test that passes a tensor of shape [B,32,4,4] through the unet and print the shapes of the layers
+
+# [B, 128, 1, 1]
+# [B, 256, 1, 1]
+# [B, 512, 1, 1]
+
+# step 1: make data 256x256
+# step 2: modify the autoencoder to have more spatial dimensions (if needed)
+
+
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
     # test_ddim_value_range()
     # test_forward_reverse_consistency()
     # test_sigma_t_behavior()
-    # test_encoder_dimensions()
+    test_encoder_dimensions()
     # test_decoder_dimensions()
     # test_encoder_decoder_pipeline()
     # test_decoder_output_range()
     # dataset = SpectrogramDataset(config)
     # check_dataset_ranges(dataset)
     # check_dataset_dimensions(dataset, (128, 128))
-    test_autoencoder_reconstruction()
+    # test_autoencoder_reconstruction()
+    test_style_encoder_dimensions()
     print("All tests passed!")

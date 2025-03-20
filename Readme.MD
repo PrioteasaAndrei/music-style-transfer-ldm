@@ -34,9 +34,11 @@ CHECK IF IT THE LATENT SPACE - train with new latent space (32) and check the te
 
 # TODOS Theo
 
+- [ ] listen to some songs from dataloader and reconstructed
+- [ ] plot 4x4 spectograms from dataset and see how they look
+- [ ] define a method / funciton that counts the number of params of the LDM class and the style encoder separately. (10M vs 3-4 M)
+
 - [ ] Black Band problem.
-- [ ] How to get a more fixed size image? -> 256x256?
-- [ ] image normalization?ß
 - [ ] Why are the db in the reconstructed songs so different? Does changing normalization affect this? Can we just adjust volume?
 - [ ] Statistics on the spectograms -> By label (maybe plot 16 spectograms per label) Do patterns emerge?
 - [ ] Complete Dataset in different pytorch format

@@ -4,9 +4,13 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from typing import Dict, List, Optional, Tuple
 import math
+from config import config
 
 
 class SpectrogramEncoder(nn.Module):
+    '''
+    Output: [B, latent_dim, H//32, W//32] i.e. [B,32,4,4] for 128x128 spectrograms
+    '''
     def __init__(self, latent_dim=4):
         super(SpectrogramEncoder, self).__init__()
         self.encoder = nn.Sequential(
@@ -24,6 +28,9 @@ class SpectrogramEncoder(nn.Module):
         return self.encoder(x)
     
 class SpectrogramDecoder(nn.Module):
+    '''
+    input: [B, latent_dim, H//32, W//32] i.e. [B,32,4,4] for 128x128 spectrograms
+    '''
     def __init__(self, latent_dim=4):
         super(SpectrogramDecoder, self).__init__()
         self.decoder = nn.Sequential(
@@ -49,61 +56,72 @@ class StyleEncoder(nn.Module):
     def __init__(self, in_channels=1, num_filters=64):
         super().__init__()
 
-        # Downsampling path
-        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
-        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
-        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
-        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
+       # Downsampling path to match UNet dimensions
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)      # 128x128
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 64x64
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 32x32
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 16x16
+        self.enc5 = nn.Conv2d(num_filters * 8, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 8x8
+        self.enc6 = nn.Conv2d(num_filters * 4, num_filters, kernel_size=3, stride=2, padding=1)  # 4x4
+        self.enc7 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 2x2
 
     def forward(self, style_spectrogram):
         """
         Returns a dictionary of different resolution style embeddings.
         """
+        s1 = F.relu(self.enc1(style_spectrogram))  # 128x128
+        s2 = F.relu(self.enc2(s1))                # 64x64
+        s3 = F.relu(self.enc3(s2))                # 32x32
+        s4 = F.relu(self.enc4(s3))                # 16x16
+        s5 = F.relu(self.enc5(s4))                # 8x8
+        s6 = F.relu(self.enc6(s5))                # 4x4
+        s7 = F.relu(self.enc7(s6))                # 2x2
 
-        
-        s1 = F.relu(self.enc1(style_spectrogram))  # 256x256
-        s2 = F.relu(self.enc2(s1))  # 128x128
-        s3 = F.relu(self.enc3(s2))  # 64x64
-        s4 = F.relu(self.enc4(s3))  # 32x32
-        
-
-        return { "s1": s1, "s2": s2, "s3": s3, "s4": s4 }  # Return different resolutions
+        return {
+            "s1": s1,  # 128x128
+            "s2": s2,  # 64x64
+            "s3": s3,  # 32x32
+            "s4": s4,  # 16x16
+            "s5": s5,  # 8x8
+            "s6": s6,  # 4x4
+            "s7": s7   # 2x2
+        }
 
 class ForwardDiffusion(nn.Module):
-    def __init__(self, num_timesteps=1000):
+    def __init__(self, num_timesteps=config['forward_diffusion_num_timesteps']):
         super().__init__()
         self.num_timesteps = num_timesteps
         
-        # Pre-compute values
+        # Pre-compute values (these are fixed, not learned)
         beta_start = 0.0001
         beta_end = 0.02
-        self.beta_t = torch.linspace(beta_start, beta_end, num_timesteps)
-        self.alpha_t = 1 - self.beta_t
-        self.alpha_bar_t = torch.cumprod(self.alpha_t, dim=0)
+        self.register_buffer('beta_t', torch.linspace(beta_start, beta_end, num_timesteps))
+        self.register_buffer('alpha_t', 1 - self.beta_t)
+        self.register_buffer('alpha_bar_t', torch.cumprod(self.alpha_t, dim=0))
     
     def forward(self, x_0, t):
-        device = x_0.device
-        
-        # Move pre-computed values to the correct device
-        self.beta_t = self.beta_t.to(device)
-        self.alpha_t = self.alpha_t.to(device)
-        self.alpha_bar_t = self.alpha_bar_t.to(device)
-        
-        # Move t to correct device and ensure it's long type for indexing
-        t = t.to(device)
-        
         # Get alpha_bar_t for the batch
-        alpha_bar_t = self.alpha_bar_t[t].view(-1, 1, 1, 1)  # Shape: (batch, 1, 1, 1)
+        device = x_0.device
+        t = t.to(device)
+        self.alpha_bar_t = self.alpha_bar_t.to(device)
+        alpha_bar_t = self.alpha_bar_t[t].view(-1, 1, 1, 1)
         
         # Sample noise
-        eps = torch.randn_like(x_0)
+        eps = torch.randn_like(x_0, device=device)
         
         # Apply forward process
         z_t = torch.sqrt(alpha_bar_t) * x_0 + torch.sqrt(1 - alpha_bar_t) * eps
         
         return z_t, eps
-    
 
+    def predict_start_from_noise(self, z_t, t, noise_pred):
+        """Predict x_0 from the predicted noise"""
+        device = z_t.device
+        t = t.to(device)
+        self.alpha_bar_t = self.alpha_bar_t.to(device)
+        
+        alpha_bar_t = self.alpha_bar_t[t].view(-1, 1, 1, 1)
+        return (z_t - torch.sqrt(1 - alpha_bar_t) * noise_pred) / torch.sqrt(alpha_bar_t)
 
 class CrossAttention(nn.Module):
     """
@@ -163,8 +181,8 @@ class UNet(nn.Module):
         self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
 
         # Cross attention layers with correct embedding dimensions
-        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)  # For 64x64 feature maps
-        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 8, num_heads=4)  # For 32x32 feature maps
+        self.cross_attention1 = CrossAttention(embed_dim=num_filters * 2, num_heads=4)  # For 64x64 feature maps
+        self.cross_attention2 = CrossAttention(embed_dim=num_filters * 4, num_heads=4)  # For 32x32 feature maps
 
         # Bottleneck
         self.bottleneck = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=1, padding=1)
@@ -183,55 +201,41 @@ class UNet(nn.Module):
         """
         # Process time embedding
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
-
+        print(f"t_embedding: {t_embedding.shape}")
         # Encoder
         z1 = F.relu(self.enc1(z))  # [B, 64, H, W]
-        z2 = F.relu(self.enc2(z1)) + t_embedding  # [B, 128, H/2, W/2]
-        z3 = F.relu(self.enc3(z2))  # [B, 256, H/4, W/4]
-
-        # Store original z3 for skip connection
+        print(f"z1: {z1.shape}")
+        print(f"style_embedding['s6']: {style_embedding['s6'].shape}")
+        z1_orig = z1
+        # z1 = self.cross_attention1(z1, style_embedding["s6"])
+        # print(f"z1 after cross attention: {z1.shape}")
+        z2 = F.relu(self.enc2(z1)) + t_embedding 
+        print(f"z2: {z2.shape}")
+        z3 = F.relu(self.enc3(z2)) # 
+        print(f"z3: {z3.shape}")
         z3_orig = z3
-        
-        # Ensure spatial dimensions match before cross-attention
-        if z3.shape[-1] != style_embedding['s3'].shape[-1] or z3.shape[-2] != style_embedding['s3'].shape[-2]:
-            z3 = F.interpolate(z3, size=style_embedding['s3'].shape[-2:], mode='bilinear', align_corners=False)
-        
-        z3 = self.cross_attention1(z3, style_embedding["s3"])
-        z4 = F.relu(self.enc4(z3))  # [B, 512, H/8, W/8]
-        
-        # Store original z4 for skip connection
+
+        z4 = F.relu(self.enc4(z3))
+        print(f"z4: {z4.shape}")
         z4_orig = z4
-        
-        # Ensure spatial dimensions match before cross-attention
-        if z4.shape[-1] != style_embedding['s4'].shape[-1] or z4.shape[-2] != style_embedding['s4'].shape[-2]:
-            z4 = F.interpolate(z4, size=style_embedding['s4'].shape[-2:], mode='bilinear', align_corners=False)
-            
-        z4 = self.cross_attention2(z4, style_embedding["s4"])
 
-        # Bottleneck
-        bottleneck = F.relu(self.bottleneck(z4))
 
-        # Decoder - these are skip connections
-        z4_up = F.relu(self.dec4(bottleneck))
-        # Ensure z4_up matches z3_orig dimensions for skip connection
-        if z4_up.shape != z3_orig.shape:
-            z4_up = F.interpolate(z4_up, size=z3_orig.shape[-2:], mode='bilinear', align_corners=False)
-        z4_up = z4_up + z3_orig
-        
-        z3_up = F.relu(self.dec3(z4_up))
-        # Ensure z3_up matches z2 dimensions for skip connection
-        if z3_up.shape != z2.shape:
-            z3_up = F.interpolate(z3_up, size=z2.shape[-2:], mode='bilinear', align_corners=False)
+
+
+        # z3 = self.cross_attention2(z3, style_embedding["s7"])
+        print(f"z3 after cross attention: {z3.shape}")
+        bottleneck = F.relu(self.bottleneck(z3))
+        print(f"bottleneck: {bottleneck.shape}")
+        z3_up = F.relu(self.dec3(bottleneck))
+        print(f"z3_up: {z3_up.shape}")
         z3_up = z3_up + z2
-        
+        print(f"z3_up + z2: {z3_up.shape}")
         z2_up = F.relu(self.dec2(z3_up))
-        # Ensure z2_up matches z1 dimensions for skip connection
-        if z2_up.shape != z1.shape:
-            z2_up = F.interpolate(z2_up, size=z1.shape[-2:], mode='bilinear', align_corners=False)
-        z2_up = z2_up + z1
-        
-        output = self.dec1(z2_up)
-
+        print(f"z2_up: {z2_up.shape}")
+        z2_up = z2_up + z1_orig
+        print(f"z2_up + z1: {z2_up.shape}")
+        output = self.dec1(z2_up)   
+        print(f"output: {output.shape}")
         return output
 
 # TODO: I still doubt the formulas are right here
@@ -316,9 +320,7 @@ class LDM(nn.Module):
             self.encoder.eval()
             self.decoder.train()
           
-        # TODO: not checked
         self.unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=64)
-        # TODO: not checked
         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
         self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
         self.num_timesteps = num_timesteps
@@ -331,36 +333,21 @@ class LDM(nn.Module):
         z_0 = self.encoder(x)
         style_embedding = self.style_encoder(style)
         z_t, noise = self.noise_scheduler(z_0, t)
-        noise_pred = self.unet(z_t, t, style_embedding)
-        reconstructed = self.decoder(z_0)
+        noise_pred = self.unet(z_t, t, style_embedding) # only predicts the noise, not the denoised image
+        
+        # Get the predicted clean latent from the predicted noise
+        alpha_bar_t = self.noise_scheduler.alpha_bar_t[t].view(-1, 1, 1, 1)
+        z_0_pred = self.noise_scheduler.predict_start_from_noise(z_t, t, noise_pred)
+        
+        reconstructed = self.decoder(z_0_pred)
 
-        return z_t, noise, noise_pred, z_0, reconstructed
+        return {
+            'z_t': z_t,                    # Noisy latent
+            'noise': noise,                # Ground truth noise
+            'noise_pred': noise_pred,      # Predicted noise
+            'z_0': z_0,                    # Original clean latent
+            'reconstructed': reconstructed  # Reconstructed spectrogram
+        }
     
-    def sample(self, z_T, style, num_steps=50, eta=0.0):
-        """
-        Sample from noise using DDIM with style conditioning
-        
-        Args:
-            z_T: Initial noise
-            style: Style spectrogram to condition on
-            num_steps: Number of deno ising steps
-            eta: Controls the stochasticity (0 = deterministic)
-        """
-        # Get style embeddings
-        style_embedding = self.style_encoder(style)
-        
-        # Sample using DDIM
-        z_0 = ddim_sample(
-            z_T, 
-            self.unet,
-            self.alpha_bar_t,
-            self.beta_t,
-            style_embedding=style_embedding,
-            eta=eta,
-            timesteps=num_steps
-        )
-        
-        # Decode to spectrogram
-        return self.decoder(z_0)
 
     
