@@ -7,8 +7,8 @@ def perceptual_loss(original, reconstructed):
     '''
     Compute perceptual loss using LPIPS (Learned Perceptual Image Patch Similarity)
     '''
-    feature_extractor = LPIPS(net='alex').eval()  # Use AlexNet backbone    
-    
+    feature_extractor = LPIPS(net='alex', verbose=False).eval()  # Use AlexNet backbone    
+    feature_extractor.to(original.device)  # Move to the same device as input tensors
     # LPIPS expects values in [-1,1] range
     # Check if inputs are in [-1, 1] range
     assert torch.all((original >= -1) & (original <= 1)), "Original input must be in [-1, 1] range"
@@ -28,7 +28,7 @@ def compression_loss(original, reconstructed, latent, feature_extractor=None):
     mse_loss = nn.MSELoss()(reconstructed, original)
 
     # Perceptual loss (Optional)
-    perceptual_loss_value = perceptual_loss(original, reconstructed, feature_extractor) if feature_extractor else 0
+    perceptual_loss_value = perceptual_loss(original, reconstructed)
 
     # KL Regularization (Applied to latent space directly)
     kl_loss = kl_regularization_loss(latent)

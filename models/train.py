@@ -144,7 +144,7 @@ class LDMTrainer:
         
         # Learning rate scheduler
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=0.5, patience=10, verbose=True
+            self.optimizer, mode='min', factor=0.5, patience=10,
         )
 
     def train_step(self, content_spec, style_spec, style_loss_weight=0.1):
