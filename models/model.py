@@ -9,82 +9,78 @@ from config import config
 
 class SpectrogramEncoder(nn.Module):
     '''
-    Output: [B, latent_dim, H//32, W//32] i.e. [B,32,4,4] for 128x128 spectrograms
+    Output: [B, latent_dim, H//8, W//8] i.e. [B,32,16,16] for 128x128 spectrograms
     '''
     def __init__(self, latent_dim=4):
         super(SpectrogramEncoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=4, stride=4, padding=0),  # 64x64
+            nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1),  # 64x64
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=4, padding=0),  # 16x16
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 32x32
             nn.BatchNorm2d(128),
             nn.ReLU(), 
-            nn.Conv2d(128, latent_dim, kernel_size=2, stride=2, padding=0),  # 8x8xlatent_dim
+            nn.Conv2d(128, latent_dim, kernel_size=3, stride=2, padding=1),  # 16x16xlatent_dim
             nn.BatchNorm2d(latent_dim)
         )
 
     def forward(self, x):
         return self.encoder(x)
     
+    
 class SpectrogramDecoder(nn.Module):
     '''
-    input: [B, latent_dim, H//32, W//32] i.e. [B,32,4,4] for 128x128 spectrograms
+    input: [B, latent_dim, H//8, W//8] i.e. [B,32,16,16] for 128x128 spectrograms
     '''
     def __init__(self, latent_dim=4):
         super(SpectrogramDecoder, self).__init__()
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(latent_dim, 128, kernel_size=2, stride=2, padding=0),  # 16x16
+            nn.ConvTranspose2d(latent_dim, 128, kernel_size=4, stride=2, padding=1),  # 32x32
             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=4, padding=0),  # 64x64
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # 64x64
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=4, padding=0),  # 256x256
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),  # 128x128
             nn.Tanh()  # Output normalized to [-1, 1]
         )
 
     def forward(self, z):
         return self.decoder(z)
-    
 
 class StyleEncoder(nn.Module):
     """
     Encodes the style spectrogram into multiple resolution embeddings
     so that it can be injected into different layers of the U-Net.
+    Input: [B, 1, 128, 128]
     """
     def __init__(self, in_channels=1, num_filters=64):
         super().__init__()
 
-       # Downsampling path to match UNet dimensions
-        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)      # 128x128
-        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 64x64
-        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 32x32
-        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 16x16
-        self.enc5 = nn.Conv2d(num_filters * 8, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 8x8
-        self.enc6 = nn.Conv2d(num_filters * 4, num_filters, kernel_size=3, stride=2, padding=1)  # 4x4
-        self.enc7 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 2x2
+        # Downsampling path with monotonically increasing channels
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=2, padding=1)      # 64x64
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 32x32
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 16x16
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 8x8
+        # Keep enc5 output channels same as enc4 to maintain 512 channels
+        self.enc5 = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 4x4
 
     def forward(self, style_spectrogram):
         """
         Returns a dictionary of different resolution style embeddings.
         """
-        s1 = F.relu(self.enc1(style_spectrogram))  # 128x128
-        s2 = F.relu(self.enc2(s1))                # 64x64
-        s3 = F.relu(self.enc3(s2))                # 32x32
-        s4 = F.relu(self.enc4(s3))                # 16x16
-        s5 = F.relu(self.enc5(s4))                # 8x8
-        s6 = F.relu(self.enc6(s5))                # 4x4
-        s7 = F.relu(self.enc7(s6))                # 2x2
+        s1 = F.relu(self.enc1(style_spectrogram))  # 64x64
+        s2 = F.relu(self.enc2(s1))                # 32x32
+        s3 = F.relu(self.enc3(s2))                # 16x16
+        s4 = F.relu(self.enc4(s3))                # 8x8
+        s5 = F.relu(self.enc5(s4))                # 4x4
 
         return {
-            "s1": s1,  # 128x128
-            "s2": s2,  # 64x64
-            "s3": s3,  # 32x32
-            "s4": s4,  # 16x16
-            "s5": s5,  # 8x8
-            "s6": s6,  # 4x4
-            "s7": s7   # 2x2
+            "s1": s1,  # [4, 64, 64, 64]
+            "s2": s2,  # [4, 128, 32, 32]
+            "s3": s3,  # [4, 256, 16, 16]
+            "s4": s4,  # [4, 512, 8, 8]
+            "s5": s5,  # [4, 512, 4, 4]    # matches z3's channels
         }
 
 class ForwardDiffusion(nn.Module):
@@ -201,42 +197,32 @@ class UNet(nn.Module):
         """
         # Process time embedding
         t_embedding = self.time_mlp(t).unsqueeze(-1).unsqueeze(-1)  # Make it broadcastable
-        print(f"t_embedding: {t_embedding.shape}")
         # Encoder
-        z1 = F.relu(self.enc1(z))  # [B, 64, H, W]
-        print(f"z1: {z1.shape}")
-        print(f"style_embedding['s6']: {style_embedding['s6'].shape}")
-        z1_orig = z1
-        # z1 = self.cross_attention1(z1, style_embedding["s6"])
-        # print(f"z1 after cross attention: {z1.shape}")
+        z1 = F.relu(self.enc1(z))  # [B, 64, 16, 16]
         z2 = F.relu(self.enc2(z1)) + t_embedding 
-        print(f"z2: {z2.shape}")
-        z3 = F.relu(self.enc3(z2)) # 
-        print(f"z3: {z3.shape}")
-        z3_orig = z3
-
+        # Apply cross attention to z2 using style embedding s6
+        z2_original = z2
+        # Print style embedding and z2 dimensions
+        print(f"z2 shape: {z2.shape}")
+        print(f"style_embedding['s4'] shape: {style_embedding['s4'].shape}")
+        z2 = self.cross_attention1(z2, style_embedding["s4"])
+        z3 = F.relu(self.enc3(z2))
+        z3_original = z3
+        z3 = self.cross_attention2(z3, style_embedding["s5"])
         z4 = F.relu(self.enc4(z3))
-        print(f"z4: {z4.shape}")
-        z4_orig = z4
+        
+        # Bottleneck
+        z4 = F.relu(self.bottleneck(z4))
 
-
-
-
-        # z3 = self.cross_attention2(z3, style_embedding["s7"])
-        print(f"z3 after cross attention: {z3.shape}")
-        bottleneck = F.relu(self.bottleneck(z3))
-        print(f"bottleneck: {bottleneck.shape}")
-        z3_up = F.relu(self.dec3(bottleneck))
-        print(f"z3_up: {z3_up.shape}")
-        z3_up = z3_up + z2
-        print(f"z3_up + z2: {z3_up.shape}")
-        z2_up = F.relu(self.dec2(z3_up))
-        print(f"z2_up: {z2_up.shape}")
-        z2_up = z2_up + z1_orig
-        print(f"z2_up + z1: {z2_up.shape}")
-        output = self.dec1(z2_up)   
-        print(f"output: {output.shape}")
-        return output
+        # Decoder with skip connections and time embedding
+        z = F.relu(self.dec4(z4))
+        z = z + z3_original  # Skip connection from pre-attention z3
+        z = F.relu(self.dec3(z))
+        z = z + z2_original  # Skip connection from pre-attention z2
+        z = F.relu(self.dec2(z))
+        z = z + z1  # Skip connection
+        z = self.dec1(z)
+        return z
 
 # TODO: I still doubt the formulas are right here
 def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, eta=0.0, timesteps=100):

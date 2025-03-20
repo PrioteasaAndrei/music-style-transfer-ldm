@@ -152,7 +152,7 @@ def test_encoder_dimensions():
     latent = encoder(x)
     
     # Expected output dimensions: [batch_size, latent_dim, height//32, width//32]
-    expected_shape = (batch_size, latent_dim, height//32, width//32)
+    expected_shape = (batch_size, latent_dim, 16,16)
     print(f"Expected shape: {expected_shape}, got: {latent.shape}")
     assert latent.shape == expected_shape, f"Expected shape {expected_shape}, got {latent.shape}"
 
@@ -161,8 +161,8 @@ def test_encoder_dimensions():
 def test_decoder_dimensions():
     """Test if decoder restores original dimensions"""
     batch_size = 4
-    latent_dim = 4
-    height = width = 8  # 256//32 = 8 (matching encoder output)
+    latent_dim = config['latent_dim_encoder']
+    height = width = 16  
     
     # Create decoder
     decoder = SpectrogramDecoder(latent_dim=latent_dim)
@@ -174,7 +174,7 @@ def test_decoder_dimensions():
     output = decoder(z)
     
     # Expected output dimensions: [batch_size, 1, height*32, width*32]
-    expected_shape = (batch_size, 1, height*32, width*32)
+    expected_shape = (batch_size, 1, 128,128)
     assert output.shape == expected_shape, f"Expected shape {expected_shape}, got {output.shape}"
 
     print("Test decoder dimensions passed")
@@ -376,32 +376,57 @@ def test_style_encoder_dimensions():
     # Get style embeddings
     style_embeddings = style_encoder(style_spectrogram)
 
+    for key, value in style_embeddings.items():
+        print(f"{key}: {value.shape}")
+
     # Check each resolution level
+    # Expected shapes for each resolution level
     expected_shapes = {
-        "s1": (batch_size, 64, 128, 128),      # Original resolution
-        "s2": (batch_size, 128, 64, 64),       # /2
-        "s3": (batch_size, 256, 32, 32),       # /4
-        "s4": (batch_size, 512, 16, 16),       # /8
-        "s5": (batch_size, 256, 8, 8),         # /16
-        "s6": (batch_size, 64, 4, 4),          # /32
-        "s7": (batch_size, 128, 2, 2)          # /64
+        "s1": (batch_size, 64, 64, 64),
+        "s2": (batch_size, 128, 32, 32),
+        "s3": (batch_size, 256, 16, 16),
+        "s4": (batch_size, 512, 8, 8),
+        "s5": (batch_size, 512, 4, 4),
+        "s6": (batch_size, 512, 2, 2)
     }
 
+    # Check each resolution level matches expected shape
     for key, expected_shape in expected_shapes.items():
         assert style_embeddings[key].shape == expected_shape, \
-            f"Style embedding {key} shape mismatch. Expected {expected_shape}, got {style_embeddings[key].shape}"
+            f"Shape mismatch for {key}. Expected {expected_shape}, got {style_embeddings[key].shape}"
 
     print("Test style encoder dimensions passed")
 
 
-# TODO: make a test that passes a tensor of shape [B,32,4,4] through the unet and print the shapes of the layers
+def test_unet_dimensions():
+    """Test if UNet preserves expected dimensions through the full pipeline"""
+    batch_size = 4
+    channels = 32
+    height = width = 16
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
-# [B, 128, 1, 1]
-# [B, 256, 1, 1]
-# [B, 512, 1, 1]
+    # Create model
+    unet = UNet(in_channels=channels, out_channels=channels, num_filters=64).to(device)
 
-# step 1: make data 256x256
-# step 2: modify the autoencoder to have more spatial dimensions (if needed)
+    # Create dummy input
+    x = torch.randn(batch_size, channels, height, width).to(device)
+
+    # Forward pass
+    # Create dummy timesteps and style embeddings
+    t = torch.zeros(batch_size).to(device)  # Timestep 0 for all samples
+    # Create dummy style embeddings matching expected dimensions
+    style_embeddings = {
+        "s4": torch.randn(batch_size, 512, 8, 8).to(device),  # Match z1 channels
+        "s5": torch.randn(batch_size, 512, 4, 4).to(device)   # Match z3 channels
+    }
+    
+    z = unet(x, t, style_embeddings)
+
+    # Check if output dimensions match expected
+    expected_shape = (batch_size, channels, height, width)
+    assert z.shape == expected_shape, f"Output shape mismatch. Expected {expected_shape}, got {z.shape}"
+
+    print("Test UNet dimensions passed")
 
 
 if __name__ == "__main__":
@@ -410,7 +435,7 @@ if __name__ == "__main__":
     # test_ddim_value_range()
     # test_forward_reverse_consistency()
     # test_sigma_t_behavior()
-    test_encoder_dimensions()
+    # test_encoder_dimensions()
     # test_decoder_dimensions()
     # test_encoder_decoder_pipeline()
     # test_decoder_output_range()
@@ -419,4 +444,5 @@ if __name__ == "__main__":
     # check_dataset_dimensions(dataset, (128, 128))
     # test_autoencoder_reconstruction()
     test_style_encoder_dimensions()
+    test_unet_dimensions()
     print("All tests passed!")
