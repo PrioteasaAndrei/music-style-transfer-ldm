@@ -188,6 +188,9 @@ class LDMTrainer:
         """Train for one epoch"""
         self.model.train()
         total_loss = 0
+        total_autoencoder_loss = 0
+        total_denoisinsg_loss = 0
+        total_style_loss = 0
         num_batches = len(self.train_loader)
         
         with tqdm(self.train_loader, desc=f'Epoch {epoch}') as pbar:
@@ -205,20 +208,52 @@ class LDMTrainer:
                 
                 # Update progress bar
                 total_loss += losses['total_loss']
+                total_autoencoder_loss += losses['autoencoder_loss']
+                total_denoisinsg_loss += losses['denoisinsg_loss']
+                total_style_loss += losses['style_loss']
                 pbar.set_postfix({'loss': losses['total_loss']})
         
         avg_loss = total_loss / num_batches
-        return avg_loss
+        avg_autoencoder_loss = total_autoencoder_loss / num_batches
+        avg_denoisinsg_loss = total_denoisinsg_loss / num_batches
+        avg_style_loss = total_style_loss / num_batches
+        return avg_loss, avg_autoencoder_loss, avg_denoisinsg_loss, avg_style_loss
     
     def train(self, num_epochs):
         """Full training loop"""
         best_loss = float('inf')
+
+        train_losses = []
+        autoencoder_losses = []
+        denoisinsg_losses = []
+        style_losses = []
         
         for epoch in range(num_epochs):
             # Training epoch
-            train_loss = self.train_epoch(epoch)
+            train_loss, autoencoder_loss, denoisinsg_loss, style_loss = self.train_epoch(epoch)
             print(f'Epoch {epoch}: Train Loss = {train_loss:.4f}')
             self.scheduler.step(train_loss)
+
+            train_losses.append(train_loss)
+            autoencoder_losses.append(autoencoder_loss)
+            denoisinsg_losses.append(denoisinsg_loss)
+            style_losses.append(style_loss)
+            
+
+
+        # Save model
+        torch.save(self.model.state_dict(), 'models/pretrained/ldm.pth')
+
+        # Plot loss curves
+        plt.figure(figsize=(10, 5))
+        plt.plot(train_losses, label='Train Loss (Total)')
+        plt.plot(autoencoder_losses, label='Autoencoder Loss')
+        plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
+        plt.plot(style_losses, label='Style Loss')
+        plt.legend()
+        plt.savefig('models/plots/ldm_loss.png')
+        plt.close()
+
 
 def train_ldm(config):
     # Initialize components
