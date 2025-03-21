@@ -139,11 +139,12 @@ class LDMTrainer:
         train_loader,
         device,
         lr=1e-4,
+        style_loss_weight=0.1,
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
         self.device = device
-        
+        self.style_loss_weight = style_loss_weight
         # Initialize optimizer (only for trainable parameters)
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         self.optimizer = torch.optim.Adam(trainable_params, lr=lr)
@@ -153,10 +154,9 @@ class LDMTrainer:
             self.optimizer, mode='min', factor=0.5, patience=10,
         )
 
-    def train_step(self, content_spec, style_spec, style_loss_weight=0.1):
+    def train_step(self, content_spec, style_spec):
         """Single training step"""
         self.optimizer.zero_grad()
-
         content_spec = content_spec.float()
         style_spec = style_spec.float()
         
@@ -177,7 +177,7 @@ class LDMTrainer:
         autoencoder_loss = compression_loss(content_spec, reconstructed, z_0)
         style_loss_ = style_loss(reconstructed, style_spec)
         
-        total_loss = autoencoder_loss + denoisinsg_loss + style_loss_weight * style_loss_
+        total_loss = autoencoder_loss + denoisinsg_loss + self.style_loss_weight * style_loss_
         
         # Backward pass
         total_loss.backward()
@@ -244,6 +244,10 @@ class LDMTrainer:
             autoencoder_losses.append(autoencoder_loss)
             denoisinsg_losses.append(denoisinsg_loss)
             style_losses.append(style_loss)
+            # print other losses
+            print(f'Autoencoder Loss: {autoencoder_loss:.4f}')
+            print(f'Denoisinsg Loss: {denoisinsg_loss:.4f}')
+            print(f'Style Loss: {style_loss:.4f}')
             
 
 
@@ -258,6 +262,17 @@ class LDMTrainer:
         plt.plot(style_losses, label='Style Loss')
         plt.legend()
         plt.savefig('models/plots/ldm_loss.png')
+        plt.close()
+
+        # Plot with log scale y-axis
+        plt.figure(figsize=(10, 5))
+        plt.plot(train_losses, label='Train Loss (Total)')
+        plt.plot(autoencoder_losses, label='Autoencoder Loss')
+        plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
+        plt.plot(style_losses, label='Style Loss')
+        plt.yscale('log')
+        plt.legend()
+        plt.savefig('models/plots/ldm_loss_log.png')
         plt.close()
 
 
@@ -279,7 +294,8 @@ def train_ldm(config):
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
 
-    trainer = LDMTrainer(model, train_loader, device, lr=config['learning_rate'])
+    trainer = LDMTrainer(model, train_loader, device, lr=config['learning_rate'], 
+                          style_loss_weight=config['style_loss_weight'])
     trainer.train(config['num_epochs'])
 
 def main():
