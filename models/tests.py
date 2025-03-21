@@ -8,6 +8,9 @@ from dataset import SpectrogramDataset, prepare_dataset
 import torch
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
+from model import StyleEncoder, UNet, LDM
+from config import config
+
 
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
@@ -776,6 +779,45 @@ def diagnose_ldm_generation(load_full_model=True):
     print(f"Saved generated audio to {gen_audio_path}")
     print("Diagnosis complete. Check the visualizations to understand the generation process.")
 
+def test_model_parameters():
+    """Print parameter counts for all model components"""
+
+    # Initialize device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}\n")
+    
+    # Initialize latent dimension from config
+    latent_dim = config['latent_dim_encoder']
+    
+    # Define all model components to test
+    models = {
+        "SpectrogramEncoder": SpectrogramEncoder(latent_dim=latent_dim),
+        "SpectrogramDecoder": SpectrogramDecoder(latent_dim=latent_dim),
+        "StyleEncoder": StyleEncoder(in_channels=1, num_filters=config['unet_num_filters']),
+        "UNet": UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=64),
+        "LDM (full)": LDM(latent_dim=latent_dim)
+    }
+    
+    # Print header
+    print(f"{'Component':<20} {'Total Parameters':<20} {'Trainable Parameters':<20}")
+    print("-" * 60)
+    
+    # Calculate and print parameters for each model
+    for name, model in models.items():
+        model = model.to(device)
+        
+        # Calculate total parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        
+        # Calculate trainable parameters
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        
+        # Print results
+        print(f"{name:<20} {total_params:<20,d} {trainable_params:<20,d}")
+    
+    print("-" * 60)
+    print("Parameter count test completed.\n")
+
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
@@ -795,4 +837,5 @@ if __name__ == "__main__":
     # test_music_style_transfer_pipeline_from_dataset()
     test_music_style_transfer_with_ldm()
     diagnose_ldm_generation(load_full_model=True)
+    test_model_parameters()
     print("All tests passed!")
