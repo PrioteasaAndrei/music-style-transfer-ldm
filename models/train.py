@@ -18,6 +18,12 @@ import yaml
 from tqdm import tqdm
 from loss import style_loss
 
+# cuda or error
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if device.type == 'cuda':
+    print("Using GPU")
+else:
+    raise RuntimeError("GPU not available, please check your setup.")
 
 def train_autoencoder(config):
     # Initialize components
@@ -257,7 +263,13 @@ class LDMTrainer:
 
 def train_ldm(config):
     # Initialize components
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if device.type == 'cuda':
+        print("Using GPU")
+    else:
+        raise RuntimeError("GPU not available, please check your setup.")
+
 
     # will automatically load pretrained weights
     model = LDM(latent_dim=config['latent_dim_encoder']).to(device)

@@ -231,7 +231,7 @@ class UNet(nn.Module):
         return z1
 
 # TODO: I still doubt the formulas are right here
-def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, eta=0.0, timesteps=100):
+def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict=None, eta=0.0, timesteps=250, verbose=False):
     """
     DDIM Reverse Sampling Process
 
@@ -241,8 +241,11 @@ def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, et
     beta_t: Noise variance schedule
     num_steps: Number of denoising steps (less = faster)
     eta: Controls stochasticity (0 = deterministic DDIM)
+    verbose: If True, collect and return logs of the sampling process
 
-    Returns: Denoised latent z_0 (final spectrogram latent)
+    Returns: 
+        If verbose=False: Denoised latent z_0 (final spectrogram latent)
+        If verbose=True: (Denoised latent z_0, sampling_logs)
     """
     device = z_T.device
     batch_size = z_T.shape[0]
@@ -251,12 +254,20 @@ def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, et
     alpha_bar_t = alpha_bar_t.to(device)
     beta_t = beta_t.to(device)
     
+    # For tracking the sampling process when verbose=True
+    sampling_logs = {
+        'timesteps': [],
+        'pred_x0': [],
+        'latents': []
+    } if verbose else None
+    
+    z_t = z_T.clone()
     for i in range(timesteps - 1, -1, -1):
         t = torch.full((batch_size,), i, device=device, dtype=torch.long)
         t_float = t.float()
         
         with torch.no_grad():
-            noise_pred = model(z_T, t_float, style_embedding)
+            noise_pred = model(z_t, t_float, style_embedding)
             
             # Get alpha values and reshape for broadcasting
             alpha_bar_t_prev = alpha_bar_t[t].view(-1, 1, 1, 1)  # [B, 1, 1, 1]
@@ -266,15 +277,31 @@ def ddim_sample(z_T, model, alpha_bar_t, beta_t, style_embedding: dict =None, et
             sigma_t = eta * torch.sqrt((1 - alpha_bar_t_prev) * (1 - alpha_bar_t_curr) / alpha_bar_t_curr)
 
             # Compute predicted x_0 (denoised sample)
-            pred_x0 = (z_T - torch.sqrt(1 - alpha_bar_t_prev) * noise_pred) / torch.sqrt(alpha_bar_t_prev)
+            pred_x0 = (z_t - torch.sqrt(1 - alpha_bar_t_prev) * noise_pred) / torch.sqrt(alpha_bar_t_prev)
 
             # Compute direction pointing to x_t
             dir_xt = torch.sqrt(1 - alpha_bar_t_curr - sigma_t**2) * noise_pred
 
             # Sample z_{t-1} using the DDIM formula
-            z_T = torch.sqrt(alpha_bar_t_prev) * pred_x0 + dir_xt + sigma_t * torch.randn_like(z_T)
+            z_t = torch.sqrt(alpha_bar_t_prev) * pred_x0 + dir_xt + sigma_t * torch.randn_like(z_t)
 
-    return z_T
+            # Log data if verbose is enabled
+            if verbose:
+                # some type stuff
+                assert sampling_logs is not None
+                # Save data every 25 timesteps or at significant points
+                if i % 25 == 0 or i in [timesteps-1, timesteps//2, 10, 5, 0]:
+                    sampling_logs['timesteps'].append(i)
+                    sampling_logs['pred_x0'].append(pred_x0.detach().clone())
+                    sampling_logs['latents'].append(z_t.detach().clone())
+                    
+                    if i % 50 == 0:
+                        print(f"Timestep: {i}/{timesteps}, Noise scale: {sigma_t.mean().item():.5f}")
+
+    if verbose:
+        return z_t, sampling_logs
+    else:
+        return z_t
 
 class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
@@ -292,15 +319,90 @@ class SinusoidalPositionEmbeddings(nn.Module):
 
 
 class LDM(nn.Module):
-    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=config['forward_diffusion_num_timesteps']):
+    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=config['forward_diffusion_num_timesteps'], load_full_model=False):
         super(LDM, self).__init__()
-        self.encoder = SpectrogramEncoder(latent_dim=latent_dim) # NOTE: needs to be freezed after pretraining
-        self.decoder = SpectrogramDecoder(latent_dim=latent_dim) # NOTE: train with the unet starting from the pretrained
+        
+        # First create all components with correct initialization
+        self.encoder = SpectrogramEncoder(latent_dim=latent_dim)
+        self.decoder = SpectrogramDecoder(latent_dim=latent_dim)
+        self.unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=64)
+        self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
+        self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
+        self.num_timesteps = num_timesteps
 
         if pretrained_path:
-            # load pretrained weights
-            self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth'))
-            self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth'))
+            if load_full_model:
+                # Load the entire LDM model if it exists
+                try:
+                    # Choose device for loading weights
+                    if torch.cuda.is_available():
+                        map_location = 'cuda'
+                    elif torch.backends.mps.is_available():
+                        map_location = 'mps'
+                    else: 
+                        map_location = 'cpu'
+                    
+                    # Create a state dict with just encoder and decoder
+                    state_dict = torch.load(pretrained_path + 'ldm.pth', map_location=map_location)
+                    
+                    # Manually load components instead of full model
+                    # This avoids issues with module names not matching
+                    encoder_prefix = 'encoder.'
+                    decoder_prefix = 'decoder.'
+                    unet_prefix = 'unet.'
+                    style_encoder_prefix = 'style_encoder.'
+                    noise_prefix = 'noise_scheduler.'
+                    
+                    encoder_state_dict = {k[len(encoder_prefix):]: v for k, v in state_dict.items() 
+                                         if k.startswith(encoder_prefix)}
+                    decoder_state_dict = {k[len(decoder_prefix):]: v for k, v in state_dict.items() 
+                                         if k.startswith(decoder_prefix)}
+                    unet_state_dict = {k[len(unet_prefix):]: v for k, v in state_dict.items() 
+                                      if k.startswith(unet_prefix)}
+                    style_encoder_state_dict = {k[len(style_encoder_prefix):]: v for k, v in state_dict.items() 
+                                              if k.startswith(style_encoder_prefix)}
+                    noise_state_dict = {k[len(noise_prefix):]: v for k, v in state_dict.items() 
+                                        if k.startswith(noise_prefix)}
+                    
+                    # Load state dictionaries into respective components
+                    self.encoder.load_state_dict(encoder_state_dict)
+                    self.decoder.load_state_dict(decoder_state_dict)
+                    self.unet.load_state_dict(unet_state_dict)
+                    self.style_encoder.load_state_dict(style_encoder_state_dict)
+                    self.noise_scheduler.load_state_dict(noise_state_dict)
+                    
+                    print(f"Loaded full pretrained LDM components from {pretrained_path + 'ldm.pth'}")
+                    
+                    # Set appropriate training modes
+                    self.encoder.eval()  # Encoder should be frozen
+                    self.decoder.train() # Decoder continues to be trained
+                    self.unet.train()
+                    self.style_encoder.train()
+                    
+                    # Freeze encoder weights
+                    for param in self.encoder.parameters():
+                        param.requires_grad = False
+                    
+                    return
+                
+                except (FileNotFoundError, RuntimeError) as e:
+                    print(f"Could not load full LDM model: {e}")
+                    print("Falling back to loading just encoder/decoder weights")
+            
+            # Default behavior: load just encoder/decoder
+            if torch.cuda.is_available():
+                # load pretrained weights
+                self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth', map_location='cuda'))
+                self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth', map_location='cuda'))
+            elif torch.backends.mps.is_available():
+                # load pretrained weights
+                self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth', map_location='mps'))
+                self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth', map_location='mps'))
+            else: 
+                # load pretrained weights
+                self.encoder.load_state_dict(torch.load(pretrained_path + 'encoder.pth', map_location='cpu'))
+                self.decoder.load_state_dict(torch.load(pretrained_path + 'decoder.pth', map_location='cpu'))
+            print("Loaded pretrained weights from", pretrained_path)
           
             # freeze pretrained weights
             for param in self.encoder.parameters():
@@ -340,6 +442,5 @@ class LDM(nn.Module):
             'z_0': z_0,                    # Original clean latent
             'reconstructed': reconstructed  # Reconstructed spectrogram
         }
-    
 
-    
+
