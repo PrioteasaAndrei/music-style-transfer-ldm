@@ -287,7 +287,7 @@ def train_ldm(config):
 
 
     # will automatically load pretrained weights
-    model = LDM(latent_dim=config['latent_dim_encoder']).to(device)
+    model = LDM(latent_dim=config['latent_dim_encoder'], load_full_model=False).to(device)
 
     style_dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
     train_dataset, test_dataset = torch.utils.data.random_split(style_dataset, [0.8, 0.2])
