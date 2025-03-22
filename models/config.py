@@ -1,12 +1,13 @@
 
 config = {
-    'learning_rate': 0.002,
+    'learning_rate': 5e-4,
     'learning_rate_factor': 0.5,
     'learning_rate_patience': 5,
     'learning_rate_min': 1e-6,
-    'num_epochs': 10,
-    'batch_size': 256,
-    'style_loss_weight': 0.1,
+    'num_epochs': 2,
+    # 'batch_size': 256,
+    'batch_size': 64,
+    'style_loss_weight': 3.0,
     'latent_dim_encoder': 32,
     'data_dir': 'downloads/',
     'processed_spectograms_dataset_folderpath': 'processed_images',

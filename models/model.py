@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 from typing import Dict, List, Optional, Tuple
 import math
 from config import config
-from models import loss
+from loss import VGGishFeatureLoss
 
 class SpectrogramEncoder(nn.Module):
     '''
@@ -329,7 +329,7 @@ class LDM(nn.Module):
         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
         self.style_encoder = StyleEncoder(in_channels=1, num_filters=64)
         self.num_timesteps = num_timesteps
-        self.feature_loss_net = loss.VGGishFeatureLoss()
+        self.feature_loss_net = VGGishFeatureLoss()
 
         if pretrained_path:
             if load_full_model:
