@@ -131,7 +131,6 @@ def train_autoencoder(config):
     torch.save(decoder.state_dict(), 'models/pretrained/decoder.pth')
 
 
-# TODO: this is fully uncheched
 class LDMTrainer:
     def __init__(
         self,

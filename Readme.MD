@@ -14,15 +14,35 @@ This project implements the framework described in the paper Music Style Transfe
 - maybe integrate <https://lightning.ai/docs/pytorch/stable/starter/introduction.html>
 - OmegaConf for configs: <https://github.com/ashleve/lightning-hydra-template>
 
+
+# Forward computation in LDM:
+1. Content spectrogram (x) → Encoder → Latent (z_0)
+2. Style spectrogram → StyleEncoder → Multi-resolution style embeddings
+3. Forward Diffusion: (no trainable parameters)
+   - Sample timestep t
+   - Add noise to z_0: z_t = sqrt(alpha_bar_t) * z_0 + sqrt(1 - alpha_bar_t) * noise
+4. UNet prediction:
+   - Input: z_t, t, style_embeddings
+   - Output: predicted noise
+5. Loss computation:
+   - Diffusion loss: MSE(noise_pred, noise)
+   - Autoencoder loss: MSE(x, reconstructed) + perceptual_loss + kl_loss
+   - Style loss: (currently simple MSE, should be improved)
+
+
 # TODOs Andrei
-AUTOENCODER IS NOT REALLY WORKING
-CHECK IF IT THE LATENT SPACE - train with new latent space (32) and check the test for improvements
+
+Debugging the style loss and decoder loss
+- [ ] check the data loader loads different spectograms
+- [ ] test dead style encoder
+
 - [ ] remove lpips and see what changes
-- [ ] fix shape mismatch in the ldm
-- [ ] balance number of parameters of the two networks if one is much bigger the other will not learn
 - [ ] check that forward diffusion and ddim are correct
 - [ ] see if KL regularization is actually needed 
 
+
+- [x] balance number of parameters of the two networks if one is much bigger the other will not learn
+- [x] fix shape mismatch in the ldm
 - [x] use pretrained LPIPS for perceptual loss during autoencoder training
 - [x] implement DDIM during sampling
 - [x] create different style encoder for style spectogram

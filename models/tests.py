@@ -14,8 +14,9 @@ import soundfile as sf
 import numpy as np
 from pathlib import Path
 from data.audio_processor import AudioPreprocessor
-
-
+from dataset import SpectrogramPairDataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
     # Setup
@@ -813,6 +814,116 @@ def test_model_parameters():
     print("-" * 60)
     print("Parameter count test completed.\n")
 
+
+def test_dead_style_encoder(dataset):
+    """Test if the style encoder is dead"""
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    style_dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
+    train_dataset, test_dataset = torch.utils.data.random_split(style_dataset, [0.8, 0.2])
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+    
+    style_encoder = torch.load('models/pretrained/style_encoder.pth')
+    style_encoder.to(device)
+    style_encoder.eval()
+
+
+    with torch.no_grad():
+         with tqdm(train_loader) as pbar:
+            for batch_idx, element in enumerate(pbar):
+                    # Correct unpacking of the batch
+                    (content_spec, content_label), (style_spec, style_label) = element
+                    # print(content_spec.shape)  # You can keep this if needed
+                    
+                    # Move data to device
+                    content_spec = content_spec.to(device)
+                    style_spec = style_spec.to(device)
+
+                    style_embedding = style_encoder(style_spec)
+
+                    weights_deviations_s1 = style_embedding['s1'].std().item()
+                    weights_deviations_s2 = style_embedding['s2'].std().item()
+                    weights_deviations_s3 = style_embedding['s3'].std().item()
+                    weights_deviations_s4 = style_embedding['s4'].std().item()
+                    weights_deviations_s5 = style_embedding['s5'].std().item()
+                    weights_deviations_s6 = style_embedding['s6'].std().item()
+
+                    print(f"weights_deviations_s1: {weights_deviations_s1}")
+                    print(f"weights_deviations_s2: {weights_deviations_s2}")
+                    print(f"weights_deviations_s3: {weights_deviations_s3}")
+                    print(f"weights_deviations_s4: {weights_deviations_s4}")
+                    print(f"weights_deviations_s5: {weights_deviations_s5}")
+                    print(f"weights_deviations_s6: {weights_deviations_s6}")
+
+                    # check if they are close to 0
+
+                    if weights_deviations_s1 < 0.0001 and weights_deviations_s2 < 0.0001 and weights_deviations_s3 < 0.0001 and weights_deviations_s4 < 0.0001 and weights_deviations_s5 < 0.0001 and weights_deviations_s6 < 0.0001:
+                        print("Style encoder is dead")
+                        break
+
+                    break
+                    
+
+    print("Style encoder is not dead")
+
+def test_different_images_loader():
+
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    style_dataset = SpectrogramPairDataset(config["processed_spectograms_dataset_folderpath"], config["pairing_file_path"])
+    train_dataset, test_dataset = torch.utils.data.random_split(style_dataset, [0.8, 0.2])
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+
+    content_images = []
+    style_images = []
+
+    cont = 0
+
+    with tqdm(train_loader) as pbar:
+            for batch_idx, element in enumerate(pbar):
+                    # Correct unpacking of the batch
+                    (content_spec, content_label), (style_spec, style_label) = element
+                    content_images.append(content_spec)
+                    style_images.append(style_spec)
+
+                    cont += 1
+
+                    if cont > 8:
+                        break
+
+
+
+    # Convert lists of tensors to tensors
+    content_images = torch.cat(content_images[:8], dim=0)  # Take first 8 images
+    style_images = torch.cat(style_images[:8], dim=0)
+
+    # Create a figure with subplots
+    fig, axes = plt.subplots(2, 8, figsize=(20, 5))
+    
+    # Plot content images on top row
+    for i in range(8):
+        axes[0,i].imshow(content_images[i,0].cpu().numpy(), cmap='gray')
+        axes[0,i].axis('off')
+        if i == 0:
+            axes[0,i].set_title('Content', pad=10)
+    
+    # Plot style images on bottom row
+    for i in range(8):
+        axes[1,i].imshow(style_images[i,0].cpu().numpy(), cmap='gray')
+        axes[1,i].axis('off')
+        if i == 0:
+            axes[1,i].set_title('Style', pad=10)
+    
+    plt.tight_layout()
+    plt.savefig('models/plots/dataset_style_comparison.png')
+    plt.close()
+
+
+    print(content_images.shape)
+    print(style_images.shape)
+
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
@@ -830,7 +941,9 @@ if __name__ == "__main__":
     # test_style_encoder_dimensions()
     # test_unet_dimensions()
     # test_music_style_transfer_pipeline_from_dataset()
-    test_music_style_transfer_with_ldm()
-    diagnose_ldm_generation(load_full_model=True)
-    test_model_parameters()
+    # test_music_style_transfer_with_ldm()
+    # diagnose_ldm_generation(load_full_model=True)
+    # test_model_parameters()
+    test_dead_style_encoder()
+    test_different_images_loader()
     print("All tests passed!")
