@@ -434,6 +434,8 @@ class LDM(nn.Module):
         z_0_pred = self.noise_scheduler.predict_start_from_noise(z_t, t, noise_pred)
         
         reconstructed = self.decoder(z_0_pred)
+        # normalize to [0, 1] -> Match the original spectrogram range
+        reconstructed = (reconstructed + 1) / 2
 
         return {
             'z_t': z_t,                    # Noisy latent
