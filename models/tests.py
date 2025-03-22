@@ -17,6 +17,7 @@ from data.audio_processor import AudioPreprocessor
 from dataset import SpectrogramPairDataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
     # Setup
@@ -924,6 +925,23 @@ def test_different_images_loader():
     print(content_images.shape)
     print(style_images.shape)
 
+
+def test_vggish_loss():
+    """Test if the vggish loss is working"""
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    from models import loss
+    feature_loss_net = loss.VGGishFeatureLoss().to(device)
+
+    content_images = torch.randn(64,1 ,128, 128).to(device)
+    style_images = torch.randn(64,1 ,128, 128).to(device)
+
+    feature_loss = feature_loss_net(content_images,style_images)
+
+    print(feature_loss)
+
+    
+
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
@@ -944,6 +962,7 @@ if __name__ == "__main__":
     # test_music_style_transfer_with_ldm()
     # diagnose_ldm_generation(load_full_model=True)
     # test_model_parameters()
-    test_dead_style_encoder()
-    test_different_images_loader()
+    # test_dead_style_encoder()
+    # test_different_images_loader()
+    test_vggish_loss()
     print("All tests passed!")
