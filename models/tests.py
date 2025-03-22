@@ -815,7 +815,7 @@ def test_model_parameters():
     print("Parameter count test completed.\n")
 
 
-def test_dead_style_encoder(dataset):
+def test_dead_style_encoder():
     """Test if the style encoder is dead"""
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 

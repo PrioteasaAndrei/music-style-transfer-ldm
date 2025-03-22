@@ -33,8 +33,8 @@ This project implements the framework described in the paper Music Style Transfe
 # TODOs Andrei
 
 Debugging the style loss and decoder loss
-- [ ] check the data loader loads different spectograms
-- [ ] test dead style encoder
+- [x] check the data loader loads different spectograms
+- [x] test dead style encoder
 
 - [ ] remove lpips and see what changes
 - [ ] check that forward diffusion and ddim are correct

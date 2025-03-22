@@ -55,3 +55,8 @@ def style_loss(reconstructed, style_spec):
 
     return F.mse_loss(reconstructed, style_spec)
 
+def gram_matrix(features):
+    """Compute the Gram matrix from feature maps (B, C, H, W)"""
+    B, C, H, W = features.size()
+    features = features.view(B, C, H * W)
+    return torch.bmm(features, features.transpose(1, 2)) / (C * H * W)
