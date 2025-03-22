@@ -1,6 +1,6 @@
 import torch
 import pytest
-from model import ddim_sample, ForwardDiffusion, UNet
+from model import ddim_sample, ForwardDiffusion, UNet, LDM
 from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from model import StyleEncoder, UNet, LDM
 from config import config
+import soundfile as sf
+import numpy as np
+from pathlib import Path
+from data.audio_processor import AudioPreprocessor
 
 
 def test_ddim_deterministic():
@@ -459,10 +463,6 @@ def test_music_style_transfer_pipeline_from_dataset():
     """
     Full music style transfer pipeline test using a sample from the actual dataset.
     """
-    import soundfile as sf
-    import numpy as np
-    from pathlib import Path
-    from data.audio_processor import AudioPreprocessor
     
     # Load dataset
     _, test_loader = prepare_dataset(config)
@@ -627,11 +627,6 @@ def diagnose_ldm_generation(load_full_model=True):
     Diagnose why generated audio lacks structure by visualizing spectrograms
     at different stages of the generation process.
     """
-    import soundfile as sf
-    import numpy as np
-    from pathlib import Path
-    from data.audio_processor import AudioPreprocessor
-    from model import LDM
     
     # Load dataset
     _, test_loader = prepare_dataset(config)

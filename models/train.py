@@ -174,17 +174,17 @@ class LDMTrainer:
         z_t = outputs['z_t']
   
         denoisinsg_loss = diffusion_loss(noise_pred, noise)
-        autoencoder_loss = compression_loss(content_spec, reconstructed, z_0)
+        compression_loss_ = compression_loss(content_spec, reconstructed, z_0)
         style_loss_ = style_loss(reconstructed, style_spec)
         
-        total_loss = autoencoder_loss + denoisinsg_loss + self.style_loss_weight * style_loss_
+        total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
         
         # Backward pass
         total_loss.backward()
         self.optimizer.step()
         
         return {
-            'autoencoder_loss': autoencoder_loss.item(),
+            'compression_loss': compression_loss_.item(),
             'denoisinsg_loss': denoisinsg_loss.item(),
             'style_loss': style_loss_.item(),
             'total_loss': total_loss.item()
@@ -194,7 +194,7 @@ class LDMTrainer:
         """Train for one epoch"""
         self.model.train()
         total_loss = 0
-        total_autoencoder_loss = 0
+        total_compression_loss = 0
         total_denoisinsg_loss = 0
         total_style_loss = 0
         num_batches = len(self.train_loader)
@@ -214,38 +214,38 @@ class LDMTrainer:
                 
                 # Update progress bar
                 total_loss += losses['total_loss']
-                total_autoencoder_loss += losses['autoencoder_loss']
+                total_compression_loss += losses['compression_loss']
                 total_denoisinsg_loss += losses['denoisinsg_loss']
                 total_style_loss += losses['style_loss']
                 pbar.set_postfix({'loss': losses['total_loss']})
         
         avg_loss = total_loss / num_batches
-        avg_autoencoder_loss = total_autoencoder_loss / num_batches
+        avg_compression_loss = total_compression_loss / num_batches
         avg_denoisinsg_loss = total_denoisinsg_loss / num_batches
         avg_style_loss = total_style_loss / num_batches
-        return avg_loss, avg_autoencoder_loss, avg_denoisinsg_loss, avg_style_loss
+        return avg_loss, avg_compression_loss, avg_denoisinsg_loss, avg_style_loss
     
     def train(self, num_epochs):
         """Full training loop"""
         best_loss = float('inf')
 
         train_losses = []
-        autoencoder_losses = []
+        compression_losses = []
         denoisinsg_losses = []
         style_losses = []
         
         for epoch in range(num_epochs):
             # Training epoch
-            train_loss, autoencoder_loss, denoisinsg_loss, style_loss = self.train_epoch(epoch)
+            train_loss, compression_loss, denoisinsg_loss, style_loss = self.train_epoch(epoch)
             print(f'Epoch {epoch}: Train Loss = {train_loss:.4f}')
             self.scheduler.step(train_loss)
 
             train_losses.append(train_loss)
-            autoencoder_losses.append(autoencoder_loss)
+            compression_losses.append(compression_loss)
             denoisinsg_losses.append(denoisinsg_loss)
             style_losses.append(style_loss)
             # print other losses
-            print(f'Autoencoder Loss: {autoencoder_loss:.4f}')
+            print(f'Compression Loss: {compression_loss:.4f}')
             print(f'Denoisinsg Loss: {denoisinsg_loss:.4f}')
             print(f'Style Loss: {style_loss:.4f}')
             
@@ -257,7 +257,7 @@ class LDMTrainer:
         # Plot loss curves
         plt.figure(figsize=(10, 5))
         plt.plot(train_losses, label='Train Loss (Total)')
-        plt.plot(autoencoder_losses, label='Autoencoder Loss')
+        plt.plot(compression_losses, label='Compression Loss')
         plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
         plt.plot(style_losses, label='Style Loss')
         plt.legend()
@@ -267,7 +267,7 @@ class LDMTrainer:
         # Plot with log scale y-axis
         plt.figure(figsize=(10, 5))
         plt.plot(train_losses, label='Train Loss (Total)')
-        plt.plot(autoencoder_losses, label='Autoencoder Loss')
+        plt.plot(compression_losses, label='Compression Loss')
         plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
         plt.plot(style_losses, label='Style Loss')
         plt.yscale('log')
