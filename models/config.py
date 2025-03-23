@@ -4,7 +4,7 @@ config = {
     'learning_rate_factor': 0.5,
     'learning_rate_patience': 5,
     'learning_rate_min': 1e-6,
-    'num_epochs': 50,
+    'num_epochs': 302,
     # 'batch_size': 256,
     'batch_size': 128,
     'style_loss_weight': 3.0,

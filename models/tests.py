@@ -462,322 +462,396 @@ def test_unet_dimensions():
 
     print("Test UNet dimensions passed")
 
-'''
-def test_music_style_transfer_pipeline_from_dataset():
-    """
-    Full music style transfer pipeline test using a sample from the actual dataset.
-    """
-    
-    # Load dataset
-    _, test_loader = prepare_dataset(config)
-    images, labels = next(iter(test_loader))
-    sample_image = images[0]  # Get first image from batch
-    print(f"Sample image shape: {sample_image.shape}, Label: {labels[0]}")
-    
-    # Setup models with correct dimensions
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    latent_dim = config['latent_dim_encoder']  # Get the latent dimension from config
-    encoder = SpectrogramEncoder(latent_dim=latent_dim).to(device)
-    decoder = SpectrogramDecoder(latent_dim=latent_dim).to(device)
-    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
-    
-    # Initialize UNet with the correct input channels (matching the latent_dim)
-    unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=config['unet_num_filters']).to(device)
-    diffusion = ForwardDiffusion()
-    
-    # Load pretrained weights if available
-    try:
-        encoder.load_state_dict(torch.load('models/pretrained/encoder.pth'))
-        decoder.load_state_dict(torch.load('models/pretrained/decoder.pth'))
-        print("Loaded pretrained encoder/decoder weights")
-    except:
-        print("No pretrained weights found, using random initialization")
-    
-    # Create output directory
-    output_dir = Path('tests/downloads/style_transfer_dataset_test')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Step 1: Convert input to latent
-    sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
-    
-    # First test: simple reconstruction through encoder-decoder
-    with torch.no_grad():
-        latent = encoder(sample_tensor)
-        print(f"Encoded latent shape: {latent.shape}")
-        recon = decoder(latent)
-        print(f"Decoded reconstruction shape: {recon.shape}")
-    
-    # Save reconstructed audio
-    proc = AudioPreprocessor()
-    recon_audio_path = output_dir / 'reconstructed_audio_through_autoencoder.wav'
-    recon_pil = transforms.ToPILImage()(recon.cpu().squeeze(0))
-    recon_audio = proc.grayscale_mel_spectogram_image_to_audio(
-        recon_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-    sf.write(str(recon_audio_path), np.int16(recon_audio * 32767), 22050)
-    print(f'Saved reconstructed audio to {recon_audio_path}')
-    
-    # Step 2: Style transfer through DDIM
-    # Get style embedding from the original image for this test
-    style_embedding = style_encoder(sample_tensor)
-    
-    # Create random noise in latent space (not in image space)
-    z_T = torch.randn_like(latent)
-    print(f"Random noise latent shape: {z_T.shape}")
-    
-    # Apply DDIM sampling in latent space
-    with torch.no_grad():
-        denoised_latent = ddim_sample(
-            z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t,
-            eta=0, style_embedding=style_embedding, timesteps=100)
-        print(f"Denoised latent shape: {denoised_latent.shape}")
-        
-        # Decode the denoised latent
-        generated_spectrogram = decoder(denoised_latent)
-        print(f"Generated spectrogram shape: {generated_spectrogram.shape}")
-    
-    # Save generated audio
-    gen_audio_path = output_dir / 'generated_audio_with_style_transfer.wav'
-    gen_pil = transforms.ToPILImage()(generated_spectrogram.cpu().squeeze(0))
-    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
-        gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-    sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
-    print(f'Saved generated audio with style transfer to {gen_audio_path}')
-    
-    print("Full music style transfer pipeline test complete.")
 
-def test_music_style_transfer_with_ldm(load_full_model=True):
-    """
-    Test the full music style transfer pipeline using the integrated LDM class.
-    """
-    import soundfile as sf
-    import numpy as np
-    from pathlib import Path
-    from data.audio_processor import AudioPreprocessor
-    from model import LDM
+# def test_music_style_transfer_pipeline_from_dataset():
+#     """
+#     Full music style transfer pipeline test using a sample from the actual dataset.
+#     """
     
-    # Load dataset
-    _, test_loader = prepare_dataset(config)
-    images, labels = next(iter(test_loader))
-    sample_image = images[0]  # Get first image from batch
-    print(f"Sample image shape: {sample_image.shape}, Label: {labels[0]}")
+#     # Load dataset
+#     _, test_loader = prepare_dataset(config)
+#     images, labels = next(iter(test_loader))
+#     sample_image = images[0]  # Get first image from batch
+#     print(f"Sample image shape: {sample_image.shape}, Label: {labels[0]}")
     
-    # Setup LDM model with correct dimensions
+#     # Setup models with correct dimensions
+#     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+#     latent_dim = config['latent_dim_encoder']  # Get the latent dimension from config
+#     encoder = SpectrogramEncoder(latent_dim=latent_dim).to(device)
+#     decoder = SpectrogramDecoder(latent_dim=latent_dim).to(device)
+#     style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
+    
+#     # Initialize UNet with the correct input channels (matching the latent_dim)
+#     unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=config['unet_num_filters']).to(device)
+#     diffusion = ForwardDiffusion()
+    
+#     # Load pretrained weights if available
+#     try:
+#         encoder.load_state_dict(torch.load('models/pretrained/encoder.pth'))
+#         decoder.load_state_dict(torch.load('models/pretrained/decoder.pth'))
+#         print("Loaded pretrained encoder/decoder weights")
+#     except:
+#         print("No pretrained weights found, using random initialization")
+    
+#     # Create output directory
+#     output_dir = Path('tests/downloads/style_transfer_dataset_test')
+#     output_dir.mkdir(parents=True, exist_ok=True)
+    
+#     # Step 1: Convert input to latent
+#     sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
+    
+#     # First test: simple reconstruction through encoder-decoder
+#     with torch.no_grad():
+#         latent = encoder(sample_tensor)
+#         print(f"Encoded latent shape: {latent.shape}")
+#         recon = decoder(latent)
+#         print(f"Decoded reconstruction shape: {recon.shape}")
+    
+#     # Save reconstructed audio
+#     proc = AudioPreprocessor()
+#     recon_audio_path = output_dir / 'reconstructed_audio_through_autoencoder.wav'
+#     recon_pil = transforms.ToPILImage()(recon.cpu().squeeze(0))
+#     recon_audio = proc.grayscale_mel_spectogram_image_to_audio(
+#         recon_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#     sf.write(str(recon_audio_path), np.int16(recon_audio * 32767), 22050)
+#     print(f'Saved reconstructed audio to {recon_audio_path}')
+    
+#     # Step 2: Style transfer through DDIM
+#     # Get style embedding from the original image for this test
+#     style_embedding = style_encoder(sample_tensor)
+    
+#     # Create random noise in latent space (not in image space)
+#     z_T = torch.randn_like(latent)
+#     print(f"Random noise latent shape: {z_T.shape}")
+    
+#     # Apply DDIM sampling in latent space
+#     with torch.no_grad():
+#         denoised_latent = ddim_sample(
+#             z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t,
+#             eta=0, style_embedding=style_embedding, timesteps=100)
+#         print(f"Denoised latent shape: {denoised_latent.shape}")
+        
+#         # Decode the denoised latent
+#         generated_spectrogram = decoder(denoised_latent)
+#         print(f"Generated spectrogram shape: {generated_spectrogram.shape}")
+    
+#     # Save generated audio
+#     gen_audio_path = output_dir / 'generated_audio_with_style_transfer.wav'
+#     gen_pil = transforms.ToPILImage()(generated_spectrogram.cpu().squeeze(0))
+#     gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+#         gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#     sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
+#     print(f'Saved generated audio with style transfer to {gen_audio_path}')
+    
+#     print("Full music style transfer pipeline test complete.")
+
+# def test_music_style_transfer_with_ldm(load_full_model=True):
+#     """
+#     Test the full music style transfer pipeline using the integrated LDM class.
+#     """
+#     import soundfile as sf
+#     import numpy as np
+#     from pathlib import Path
+#     from data.audio_processor import AudioPreprocessor
+#     from model import LDM
+    
+#     # Load dataset
+#     _, test_loader = prepare_dataset(config)
+#     images, labels = next(iter(test_loader))
+#     sample_image = images[0]  # Get first image from batch
+#     print(f"Sample image shape: {sample_image.shape}, Label: {labels[0]}")
+    
+#     # Setup LDM model with correct dimensions
+#     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+#     latent_dim = config['latent_dim_encoder']
+    
+#     # Initialize LDM model with pretrained path
+#     ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
+#               load_full_model=load_full_model).to(device)
+    
+#     if load_full_model:
+#         print("Testing with full pretrained LDM model (including UNet and StyleEncoder)")
+#     else:
+#         print("Testing with only pretrained encoder/decoder (UNet and StyleEncoder are randomly initialized)")
+    
+#     # Create output directory
+#     output_dir = Path('tests/downloads/style_transfer_ldm_test')
+#     output_dir.mkdir(parents=True, exist_ok=True)
+    
+#     # Process sample image
+#     sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
+    
+#     # Step 1: Use LDM's encoder-decoder for simple reconstruction
+#     with torch.no_grad():
+#         latent = ldm.encoder(sample_tensor)
+#         print(f"Encoded latent shape: {latent.shape}")
+#         recon = ldm.decoder(latent)
+#         print(f"Decoded reconstruction shape: {recon.shape}")
+    
+#     # Save reconstructed audio
+#     proc = AudioPreprocessor()
+#     recon_audio_path = output_dir / 'reconstructed_audio_through_ldm.wav'
+#     recon_pil = transforms.ToPILImage()(recon.cpu().squeeze(0))
+#     recon_audio = proc.grayscale_mel_spectogram_image_to_audio(
+#         recon_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#     sf.write(str(recon_audio_path), np.int16(recon_audio * 32767), 22050)
+#     print(f'Saved reconstructed audio to {recon_audio_path}')
+    
+#     # Step 2: Style transfer through DDIM using LDM components
+#     # Here we use the same image as both content and style for demonstration
+#     style_embedding = ldm.style_encoder(sample_tensor)
+    
+#     # Create random noise in latent space
+#     z_T = torch.randn_like(latent)
+#     print(f"Random noise latent shape: {z_T.shape}")
+    
+#     # Apply DDIM sampling in latent space
+#     with torch.no_grad():
+#         denoised_latent = ddim_sample(
+#             z_T, ldm.unet, ldm.noise_scheduler.alpha_bar_t, ldm.noise_scheduler.beta_t,
+#             eta=0, style_embedding=style_embedding, timesteps=250)
+#         print(f"Denoised latent shape: {denoised_latent.shape}")
+        
+#         # Decode the denoised latent using LDM's decoder
+#         generated_spectrogram = ldm.decoder(denoised_latent)
+#         print(f"Generated spectrogram shape: {generated_spectrogram.shape}")
+    
+#     # Save generated audio
+#     gen_audio_path = output_dir / 'generated_audio_with_ldm_style_transfer.wav'
+#     gen_pil = transforms.ToPILImage()(generated_spectrogram.cpu().squeeze(0))
+#     gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+#         gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#     sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
+#     print(f'Saved generated audio with LDM style transfer to {gen_audio_path}')
+    
+#     print("Full LDM music style transfer pipeline test complete.")
+
+# def diagnose_ldm_generation(load_full_model=True):
+#     """
+#     Diagnose why generated audio lacks structure by visualizing spectrograms
+#     at different stages of the generation process.
+#     """
+    
+#     # Load dataset
+#     _, test_loader = prepare_dataset(config)
+#     images, labels = next(iter(test_loader))
+#     sample_image = images[0]  
+    
+#     # Setup 
+#     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+#     latent_dim = config['latent_dim_encoder']
+#     ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
+#               load_full_model=load_full_model).to(device)
+    
+#     # Create output directory
+#     output_dir = Path('tests/downloads/ldm_diagnosis')
+#     output_dir.mkdir(parents=True, exist_ok=True)
+    
+#     # Create directory for saving individual timestep images
+#     timestep_images_dir = output_dir / 'timestep_images'
+#     timestep_images_dir.mkdir(parents=True, exist_ok=True)
+    
+#     # Save original sample image
+#     plt.figure(figsize=(5, 5))
+#     plt.imshow(sample_image.squeeze().cpu(), cmap='gray')
+#     plt.title(f'Original Sample (Label: {labels[0]})')
+#     plt.axis('off')
+#     plt.tight_layout()
+#     plt.savefig(timestep_images_dir / 'original_sample.png')
+#     plt.close()
+    
+#     sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
+    
+#     # Step 1: Simple reconstruction
+#     with torch.no_grad():
+#         latent = ldm.encoder(sample_tensor)
+#         recon = ldm.decoder(latent)
+    
+#     # Save reconstruction
+#     plt.figure(figsize=(5, 5))
+#     plt.imshow(recon.squeeze().detach().cpu(), cmap='gray')
+#     plt.title('Autoencoder Reconstruction')
+#     plt.axis('off')
+#     plt.tight_layout()
+#     plt.savefig(timestep_images_dir / 'autoencoder_reconstruction.png')
+#     plt.close()
+    
+#     # Step 2: Sample from noise through diffusion
+#     z_T = torch.randn_like(latent)
+#     style_embedding = ldm.style_encoder(sample_tensor)
+    
+#     # Use the verbose mode to get sampling logs
+#     with torch.no_grad():
+#         denoised_latent, sampling_logs = ddim_sample(
+#             z_T, ldm.unet, ldm.noise_scheduler.alpha_bar_t, ldm.noise_scheduler.beta_t,
+#             eta=0, style_embedding=style_embedding, timesteps=250, verbose=True)
+    
+#     # Typesafety for the logs
+#     assert isinstance(sampling_logs, dict), "Sampling logs should be a dictionary"
+
+#     # Generate final spectrogram
+#     generated_spectrogram = ldm.decoder(denoised_latent)
+    
+#     # Save each timestep as a separate image
+#     proc = AudioPreprocessor()
+    
+#     for idx, timestep in enumerate(sampling_logs['timesteps']):
+#         # Get the predicted clean latent at this timestep
+#         pred_x0 = sampling_logs['pred_x0'][idx]
+        
+#         # Decode to get the spectrogram
+#         with torch.no_grad():
+#             spec_at_t = ldm.decoder(pred_x0)
+        
+#         # Save the spectrogram image
+#         plt.figure(figsize=(5, 5))
+#         plt.imshow(spec_at_t.squeeze().detach().cpu(), cmap='gray')
+#         plt.title(f'Timestep {timestep} / 250')
+#         plt.axis('off')
+#         plt.tight_layout()
+#         plt.savefig(timestep_images_dir / f'timestep_{timestep:04d}.png')
+#         plt.close()
+        
+#         # Optionally, save the audio for selected timesteps
+#         if timestep % 50 == 0 or timestep in [0, 249]:
+#             audio_path = timestep_images_dir / f'audio_timestep_{timestep:04d}.wav'
+#             spec_pil = transforms.ToPILImage()(spec_at_t.detach().cpu().squeeze(0))
+#             audio = proc.grayscale_mel_spectogram_image_to_audio(
+#                 spec_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#             sf.write(str(audio_path), np.int16(audio * 32767), 22050)
+    
+#     # Save the final generated spectrogram
+#     plt.figure(figsize=(5, 5))
+#     plt.imshow(generated_spectrogram.squeeze().detach().cpu(), cmap='gray')
+#     plt.title('Final Generated Spectrogram')
+#     plt.axis('off')
+#     plt.tight_layout()
+#     plt.savefig(timestep_images_dir / 'final_generation.png')
+#     plt.close()
+    
+#     # Also save the final generated audio
+#     gen_audio_path = output_dir / 'generated_audio_diagnosis.wav'
+#     gen_pil = transforms.ToPILImage()(generated_spectrogram.detach().cpu().squeeze(0))
+#     gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+#         gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
+#     sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
+    
+#     # Create a summary visualization showing a few key timesteps
+#     num_timesteps_to_show = min(7, len(sampling_logs['timesteps']))
+#     step_indices = list(range(0, len(sampling_logs['timesteps']), len(sampling_logs['timesteps'])//num_timesteps_to_show))[:num_timesteps_to_show]
+    
+#     fig, axes = plt.subplots(1, 3 + num_timesteps_to_show, figsize=(20, 4))
+    
+#     # Original spectrogram
+#     axes[0].imshow(sample_image.squeeze().cpu(), cmap='gray')
+#     axes[0].set_title(f'Original\nLabel: {labels[0]}')
+#     axes[0].axis('off')
+    
+#     # Simple reconstruction
+#     axes[1].imshow(recon.squeeze().detach().cpu(), cmap='gray')
+#     axes[1].set_title('Autoencoder\nReconstruction')
+#     axes[1].axis('off')
+    
+#     # Intermediate diffusion outputs
+#     for idx, log_idx in enumerate(step_indices):
+#         timestep = sampling_logs['timesteps'][log_idx]
+#         pred_x0 = sampling_logs['pred_x0'][log_idx]
+        
+#         with torch.no_grad():
+#             spec_at_t = ldm.decoder(pred_x0)
+        
+#         axes[2 + idx].imshow(spec_at_t.squeeze().detach().cpu(), cmap='gray')
+#         axes[2 + idx].set_title(f'Timestep {timestep}\nPredicted Output')
+#         axes[2 + idx].axis('off')
+    
+#     # Final generated spectrogram
+#     axes[-1].imshow(generated_spectrogram.squeeze().detach().cpu(), cmap='gray')
+#     axes[-1].set_title('Final Generation')
+#     axes[-1].axis('off')
+    
+#     plt.tight_layout()
+#     plt.savefig(output_dir / 'diffusion_process_visualization.png')
+#     plt.close()
+    
+#     print(f"Saved individual timestep images to {timestep_images_dir}/")
+#     print(f"Saved diffusion visualization summary to {output_dir / 'diffusion_process_visualization.png'}")
+#     print(f"Saved generated audio to {gen_audio_path}")
+#     print("Diagnosis complete. Check the visualizations to understand the generation process.")
+
+
+def test_ddim_generation():
+    """Test the DDIM generation with proper latent dimensions"""
+    
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # Get the correct latent dimension from config
     latent_dim = config['latent_dim_encoder']
     
-    # Initialize LDM model with pretrained path
-    ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
-              load_full_model=load_full_model).to(device)
-    
-    if load_full_model:
-        print("Testing with full pretrained LDM model (including UNet and StyleEncoder)")
-    else:
-        print("Testing with only pretrained encoder/decoder (UNet and StyleEncoder are randomly initialized)")
-    
-    # Create output directory
-    output_dir = Path('tests/downloads/style_transfer_ldm_test')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Process sample image
-    sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
-    
-    # Step 1: Use LDM's encoder-decoder for simple reconstruction
-    with torch.no_grad():
-        latent = ldm.encoder(sample_tensor)
-        print(f"Encoded latent shape: {latent.shape}")
-        recon = ldm.decoder(latent)
-        print(f"Decoded reconstruction shape: {recon.shape}")
-    
-    # Save reconstructed audio
-    proc = AudioPreprocessor()
-    recon_audio_path = output_dir / 'reconstructed_audio_through_ldm.wav'
-    recon_pil = transforms.ToPILImage()(recon.cpu().squeeze(0))
-    recon_audio = proc.grayscale_mel_spectogram_image_to_audio(
-        recon_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-    sf.write(str(recon_audio_path), np.int16(recon_audio * 32767), 22050)
-    print(f'Saved reconstructed audio to {recon_audio_path}')
-    
-    # Step 2: Style transfer through DDIM using LDM components
-    # Here we use the same image as both content and style for demonstration
-    style_embedding = ldm.style_encoder(sample_tensor)
-    
-    # Create random noise in latent space
-    z_T = torch.randn_like(latent)
-    print(f"Random noise latent shape: {z_T.shape}")
-    
-    # Apply DDIM sampling in latent space
-    with torch.no_grad():
-        denoised_latent = ddim_sample(
-            z_T, ldm.unet, ldm.noise_scheduler.alpha_bar_t, ldm.noise_scheduler.beta_t,
-            eta=0, style_embedding=style_embedding, timesteps=250)
-        print(f"Denoised latent shape: {denoised_latent.shape}")
-        
-        # Decode the denoised latent using LDM's decoder
-        generated_spectrogram = ldm.decoder(denoised_latent)
-        print(f"Generated spectrogram shape: {generated_spectrogram.shape}")
-    
-    # Save generated audio
-    gen_audio_path = output_dir / 'generated_audio_with_ldm_style_transfer.wav'
-    gen_pil = transforms.ToPILImage()(generated_spectrogram.cpu().squeeze(0))
-    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
-        gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-    sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
-    print(f'Saved generated audio with LDM style transfer to {gen_audio_path}')
-    
-    print("Full LDM music style transfer pipeline test complete.")
-
-def diagnose_ldm_generation(load_full_model=True):
-    """
-    Diagnose why generated audio lacks structure by visualizing spectrograms
-    at different stages of the generation process.
-    """
-    
-    # Load dataset
+    # Load a sample image from the dataset
     _, test_loader = prepare_dataset(config)
     images, labels = next(iter(test_loader))
-    sample_image = images[0]  
-    
-    # Setup 
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    latent_dim = config['latent_dim_encoder']
-    ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
-              load_full_model=load_full_model).to(device)
-    
-    # Create output directory
-    output_dir = Path('tests/downloads/ldm_diagnosis')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create directory for saving individual timestep images
-    timestep_images_dir = output_dir / 'timestep_images'
-    timestep_images_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save original sample image
-    plt.figure(figsize=(5, 5))
-    plt.imshow(sample_image.squeeze().cpu(), cmap='gray')
-    plt.title(f'Original Sample (Label: {labels[0]})')
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(timestep_images_dir / 'original_sample.png')
-    plt.close()
-    
-    sample_tensor = sample_image.unsqueeze(0).to(device)  # Add batch dimension
-    
-    # Step 1: Simple reconstruction
-    with torch.no_grad():
-        latent = ldm.encoder(sample_tensor)
-        recon = ldm.decoder(latent)
-    
-    # Save reconstruction
-    plt.figure(figsize=(5, 5))
-    plt.imshow(recon.squeeze().detach().cpu(), cmap='gray')
-    plt.title('Autoencoder Reconstruction')
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(timestep_images_dir / 'autoencoder_reconstruction.png')
-    plt.close()
-    
-    # Step 2: Sample from noise through diffusion
-    z_T = torch.randn_like(latent)
-    style_embedding = ldm.style_encoder(sample_tensor)
-    
-    # Use the verbose mode to get sampling logs
-    with torch.no_grad():
-        denoised_latent, sampling_logs = ddim_sample(
-            z_T, ldm.unet, ldm.noise_scheduler.alpha_bar_t, ldm.noise_scheduler.beta_t,
-            eta=0, style_embedding=style_embedding, timesteps=250, verbose=True)
-    
-    # Typesafety for the logs
-    assert isinstance(sampling_logs, dict), "Sampling logs should be a dictionary"
+    style_image = images[0]  # Get first image from batch
+    print(f"Sample image shape: {style_image.shape}, Label: {labels[0]}")
+    style_image = style_image.unsqueeze(0).to(device)  # Add batch dimension
 
-    # Generate final spectrogram
-    generated_spectrogram = ldm.decoder(denoised_latent)
+    # Proper shape for z_shape, using latent_dim from config
+    # Set proper dimensions based on input image size and encoder architecture
+    # For a 128x128 input, the latent will be (batch, latent_dim, 16, 16)
+    batch_size = 1
+    z_shape = (batch_size, latent_dim, 16, 16)
+
+    # Initialize models
+    ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
+              pretraind_filename='ldm_300.pth', load_full_model=True).to(device)
+              
+    # Run style-conditioned DDIM sampling
+    with torch.no_grad():
+        decoded = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=250, eta=1)
     
-    # Save each timestep as a separate image
-    proc = AudioPreprocessor()
+    print(f"Decoded shape: {decoded.shape}")
     
-    for idx, timestep in enumerate(sampling_logs['timesteps']):
-        # Get the predicted clean latent at this timestep
-        pred_x0 = sampling_logs['pred_x0'][idx]
-        
-        # Decode to get the spectrogram
-        with torch.no_grad():
-            spec_at_t = ldm.decoder(pred_x0)
-        
-        # Save the spectrogram image
-        plt.figure(figsize=(5, 5))
-        plt.imshow(spec_at_t.squeeze().detach().cpu(), cmap='gray')
-        plt.title(f'Timestep {timestep} / 250')
-        plt.axis('off')
-        plt.tight_layout()
-        plt.savefig(timestep_images_dir / f'timestep_{timestep:04d}.png')
-        plt.close()
-        
-        # Optionally, save the audio for selected timesteps
-        if timestep % 50 == 0 or timestep in [0, 249]:
-            audio_path = timestep_images_dir / f'audio_timestep_{timestep:04d}.wav'
-            spec_pil = transforms.ToPILImage()(spec_at_t.detach().cpu().squeeze(0))
-            audio = proc.grayscale_mel_spectogram_image_to_audio(
-                spec_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-            sf.write(str(audio_path), np.int16(audio * 32767), 22050)
-    
-    # Save the final generated spectrogram
+    # First create folder if it doesn't exist
+    Path('tests/downloads/test_ddim_generation').mkdir(parents=True, exist_ok=True)
+
+    # Save picture of mel generated spectrogram
     plt.figure(figsize=(5, 5))
-    plt.imshow(generated_spectrogram.squeeze().detach().cpu(), cmap='gray')
-    plt.title('Final Generated Spectrogram')
+    plt.imshow(decoded.squeeze().detach().cpu(), cmap='gray')
+    plt.title('Decoded Mel Spectrogram')
     plt.axis('off')
     plt.tight_layout()
-    plt.savefig(timestep_images_dir / 'final_generation.png')
+    plt.savefig('tests/downloads/test_ddim_generation/generated_mel_spectrogram.png')
     plt.close()
-    
-    # Also save the final generated audio
-    gen_audio_path = output_dir / 'generated_audio_diagnosis.wav'
-    gen_pil = transforms.ToPILImage()(generated_spectrogram.detach().cpu().squeeze(0))
-    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
-        gen_pil, sr=22050, im_height=sample_image.shape[1], im_width=sample_image.shape[2])
-    sf.write(str(gen_audio_path), np.int16(gen_audio * 32767), 22050)
-    
-    # Create a summary visualization showing a few key timesteps
-    num_timesteps_to_show = min(7, len(sampling_logs['timesteps']))
-    step_indices = list(range(0, len(sampling_logs['timesteps']), len(sampling_logs['timesteps'])//num_timesteps_to_show))[:num_timesteps_to_show]
-    
-    fig, axes = plt.subplots(1, 3 + num_timesteps_to_show, figsize=(20, 4))
-    
-    # Original spectrogram
-    axes[0].imshow(sample_image.squeeze().cpu(), cmap='gray')
-    axes[0].set_title(f'Original\nLabel: {labels[0]}')
-    axes[0].axis('off')
-    
-    # Simple reconstruction
-    axes[1].imshow(recon.squeeze().detach().cpu(), cmap='gray')
-    axes[1].set_title('Autoencoder\nReconstruction')
-    axes[1].axis('off')
-    
-    # Intermediate diffusion outputs
-    for idx, log_idx in enumerate(step_indices):
-        timestep = sampling_logs['timesteps'][log_idx]
-        pred_x0 = sampling_logs['pred_x0'][log_idx]
-        
-        with torch.no_grad():
-            spec_at_t = ldm.decoder(pred_x0)
-        
-        axes[2 + idx].imshow(spec_at_t.squeeze().detach().cpu(), cmap='gray')
-        axes[2 + idx].set_title(f'Timestep {timestep}\nPredicted Output')
-        axes[2 + idx].axis('off')
-    
-    # Final generated spectrogram
-    axes[-1].imshow(generated_spectrogram.squeeze().detach().cpu(), cmap='gray')
-    axes[-1].set_title('Final Generation')
-    axes[-1].axis('off')
-    
+
+    # Save picture of original mel spectrogram
+    plt.figure(figsize=(5, 5))
+    plt.imshow(style_image.squeeze().detach().cpu(), cmap='gray')
+    plt.title('Original Mel Spectrogram')
+    plt.axis('off')
     plt.tight_layout()
-    plt.savefig(output_dir / 'diffusion_process_visualization.png')
+    plt.savefig('tests/downloads/test_ddim_generation/original_mel_spectrogram.png')
     plt.close()
+
     
-    print(f"Saved individual timestep images to {timestep_images_dir}/")
-    print(f"Saved diffusion visualization summary to {output_dir / 'diffusion_process_visualization.png'}")
-    print(f"Saved generated audio to {gen_audio_path}")
-    print("Diagnosis complete. Check the visualizations to understand the generation process.")
-'''
+    # Save audio
+    proc = AudioPreprocessor()
+
+    
+    # Save audio from original mel spectrogram
+    audio_path = 'tests/downloads/test_ddim_generation/original_audio.wav'
+    # Convert the spectrogram image to audio using AudioPreprocessor
+    original_pil = transforms.ToPILImage()(style_image.squeeze().detach().cpu())
+    original_audio = proc.grayscale_mel_spectogram_image_to_audio(
+        original_pil, sr=22050, im_height=style_image.shape[2], im_width=style_image.shape[3])
+    # Save as WAV file
+    sf.write(audio_path, np.int16(original_audio * 32767), 22050)
+    print(f'Saved original audio to {audio_path}')
+    
+    # Save audio from decoded mel spectrogram
+    gen_audio_path = 'tests/downloads/test_ddim_generation/generated_audio.wav'
+    gen_pil = transforms.ToPILImage()(decoded.squeeze().detach().cpu())
+    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+        gen_pil, sr=22050, im_height=style_image.shape[2], im_width=style_image.shape[3])
+    sf.write(gen_audio_path, np.int16(gen_audio * 32767), 22050)
+    print(f'Saved generated audio to {gen_audio_path}')
 
 def test_model_parameters():
     """Print parameter counts for all model components"""
@@ -948,14 +1022,18 @@ def test_ddim_wrapper():
     """Test if the DDIM sampling wrapper is working correctly"""
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm_02.pth', load_full_model=True).to(device)
+    # Get the correct latent dimension from config
+    latent_dim = config['latent_dim_encoder']
+    
+    model = LDM(latent_dim=latent_dim, pretraind_filename='ldm_02.pth', load_full_model=True).to(device)
     model.eval()
 
     # Create dummy style spectrogram
     style_spec = torch.randn(1, 1, 128, 128).to(device)
     
     # Define latent shape matching encoder output dimensions
-    z_shape = (1, 32, 16, 16)  # [batch, latent_dim, height/8, width/8]
+    # Use latent_dim for the channel dimension instead of hardcoding to 32
+    z_shape = (1, latent_dim, 16, 16)  # [batch, latent_dim, height/8, width/8]
     
     # Test with different timesteps and eta values
     timesteps_list = [10, 50, 100]
@@ -1018,5 +1096,7 @@ if __name__ == "__main__":
     # test_dead_style_encoder()
     # test_different_images_loader()
     # test_vggish_loss()
-    test_ddim_wrapper()
+    # test_ddim_wrapper()
+
+    test_ddim_generation()
     print("All tests passed!")

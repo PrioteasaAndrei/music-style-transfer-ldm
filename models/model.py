@@ -395,8 +395,8 @@ class LDM(nn.Module):
         # Get style embedding
         style_embedding = self.style_encoder(style_spec)
         
-        # Run DDIM sampling
-        sampled = self.style_conditioned_ddim_sample(z_t, style_embedding, timesteps, eta)
+        # Run DDIM sampling - this returns a tuple (sampled, sampling_logs)
+        sampled, _ = self.style_conditioned_ddim_sample(z_t, style_embedding, timesteps, eta)
         
         # Decode the sampled latent
         decoded = self.decoder(sampled)
@@ -431,6 +431,9 @@ class LDM(nn.Module):
             t = times[i]
             t_next = times[i+1]
             
+            # Add batch dimension to timestep t
+            t = t.repeat(z_t.shape[0])  # Create batch of identical timesteps
+            
             # 1. Predict noise at current timestep
             noise_pred = self.unet(x, t, style_embedding)
             
@@ -459,5 +462,4 @@ class LDM(nn.Module):
             sampling_logs['noise_pred'].append(noise_pred.detach().clone())
         
         return x, sampling_logs
-    
-    
+
