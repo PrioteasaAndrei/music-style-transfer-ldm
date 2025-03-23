@@ -174,7 +174,7 @@ class LDMTrainer:
   
         denoisinsg_loss = diffusion_loss(noise_pred, noise)
         compression_loss_ = compression_loss(content_spec, reconstructed, z_0)
-        style_loss_ = style_loss(reconstructed, style_spec)
+        style_loss_ = style_loss(reconstructed, style_spec, self.model.feature_loss_net)
         
         total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
         

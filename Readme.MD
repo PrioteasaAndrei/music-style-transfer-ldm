@@ -32,13 +32,13 @@ This project implements the framework described in the paper Music Style Transfe
 
 # TODOs Andrei
 
+- [ ] style loss still doesnt change
+- [ ] why isnt the decoder learning in the ldm
+
 Debugging the style loss and decoder loss
 - [x] check the data loader loads different spectograms
 - [x] test dead style encoder
 
-- [ ] remove lpips and see what changes
-- [ ] check that forward diffusion and ddim are correct
-- [ ] see if KL regularization is actually needed 
 
 
 - [x] balance number of parameters of the two networks if one is much bigger the other will not learn
