@@ -247,32 +247,31 @@ class LDMTrainer:
             print(f'Compression Loss: {compression_loss:.4f}')
             print(f'Denoisinsg Loss: {denoisinsg_loss:.4f}')
             print(f'Style Loss: {style_loss:.4f}')
-            
 
+            if epoch % 100 == 0:
+                # Save model
+                torch.save(self.model.state_dict(), f'models/pretrained/ldm_{epoch}.pth')
 
-        # Save model
-        torch.save(self.model.state_dict(), 'models/pretrained/ldm.pth')
+                # Plot loss curves
+                plt.figure(figsize=(10, 5))
+                plt.plot(train_losses, label='Train Loss (Total)')
+                plt.plot(compression_losses, label='Compression Loss')
+                plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
+                plt.plot(style_losses, label='Style Loss')
+                plt.legend()
+                plt.savefig(f'models/plots/ldm_loss_{epoch}.png')
+                plt.close()
 
-        # Plot loss curves
-        plt.figure(figsize=(10, 5))
-        plt.plot(train_losses, label='Train Loss (Total)')
-        plt.plot(compression_losses, label='Compression Loss')
-        plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
-        plt.plot(style_losses, label='Style Loss')
-        plt.legend()
-        plt.savefig('models/plots/ldm_loss.png')
-        plt.close()
-
-        # Plot with log scale y-axis
-        plt.figure(figsize=(10, 5))
-        plt.plot(train_losses, label='Train Loss (Total)')
-        plt.plot(compression_losses, label='Compression Loss')
-        plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
-        plt.plot(style_losses, label='Style Loss')
-        plt.yscale('log')
-        plt.legend()
-        plt.savefig('models/plots/ldm_loss_log.png')
-        plt.close()
+                # Plot with log scale y-axis
+                plt.figure(figsize=(10, 5))
+                plt.plot(train_losses, label='Train Loss (Total)')
+                plt.plot(compression_losses, label='Compression Loss')
+                plt.plot(denoisinsg_losses, label='Denoisinsg Loss')
+                plt.plot(style_losses, label='Style Loss')
+                plt.yscale('log')
+                plt.legend()
+                plt.savefig(f'models/plots/ldm_loss_log_{epoch}.png')
+                plt.close()
 
 
 def train_ldm(config):

@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from lpips import LPIPS
 import torch.nn.functional as F
-
-def perceptual_loss(original, reconstructed):
+from config import config
+def perceptual_loss_old(original, reconstructed):
     '''
     Compute perceptual loss using LPIPS (Learned Perceptual Image Patch Similarity)
     '''
@@ -20,6 +20,13 @@ def perceptual_loss(original, reconstructed):
     # Compute perceptual loss using LPIPS
     return feature_extractor(original, reconstructed).mean()
 
+
+def perceptual_loss(original, reconstructed, feature_extractor_type:str = 'vggish'):
+    if feature_extractor_type == 'vggish':
+        vgg_feature_loss = VGGishFeatureLoss()
+        return vgg_feature_loss(original, reconstructed)
+    else:
+        return perceptual_loss_old(original, reconstructed)
 def kl_regularization_loss(latent):
     return torch.mean(0.5 * (latent.pow(2) - 1 - torch.log(latent.pow(2) + 1e-8)))
 
@@ -28,11 +35,12 @@ def compression_loss(original, reconstructed, latent):
     mse_loss = nn.MSELoss()(reconstructed, original)
 
     # Perceptual loss (Optional)
-    perceptual_loss_value = perceptual_loss(original, reconstructed)
+    perceptual_loss_value = perceptual_loss(original, reconstructed, config['compression_feature_extractor'])
 
     # KL Regularization (Applied to latent space directly)
     kl_loss = kl_regularization_loss(latent)
 
+    # lets try without the LPIPS loss
     return mse_loss + 0.1 * perceptual_loss_value + 0.01 * kl_loss
 
 

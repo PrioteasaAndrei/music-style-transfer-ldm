@@ -1,6 +1,6 @@
 import torch
 import pytest
-from model import ddim_sample, ForwardDiffusion, UNet, LDM
+from model import ForwardDiffusion, UNet, LDM
 from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
