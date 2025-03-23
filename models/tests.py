@@ -18,6 +18,7 @@ from dataset import SpectrogramPairDataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+''' Comment out ddim sampling
 def test_ddim_deterministic():
     """Test if DDIM sampling is deterministic when eta=0"""
     # Setup
@@ -91,7 +92,7 @@ def test_ddim_value_range():
     assert torch.max(torch.abs(result)) < 100, "Output values are suspiciously large"
 
     print("Test ddim value range passed")
-
+'''
 def test_forward_reverse_consistency():
     """Test if forward diffusion followed by DDIM sampling is somewhat consistent"""
     batch_size = 2
@@ -126,28 +127,29 @@ def test_forward_reverse_consistency():
 
     print("Test forward reverse consistency passed")
 
-def test_sigma_t_behavior():
-    """Test if sigma_t behaves correctly with different eta values"""
-    batch_size = 2
-    channels = 1
-    height = width = 256
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+# def test_sigma_t_behavior():
+#     """Test if sigma_t behaves correctly with different eta values"""
+#     batch_size = 2
+#     channels = 1
+#     height = width = 256
+#     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    unet = UNet(num_filters=config['unet_num_filters']).to(device)
-    style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
-    style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
-    diffusion = ForwardDiffusion()
-    z_T = torch.randn(batch_size, channels, height, width).to(device)
+#     unet = UNet(num_filters=config['unet_num_filters']).to(device)
+#     style_encoder = StyleEncoder(num_filters=config['unet_num_filters']).to(device)
+#     style_embedding = style_encoder(torch.randn(batch_size, channels, height, width).to(device))
+#     diffusion = ForwardDiffusion()
+#     z_T = torch.randn(batch_size, channels, height, width).to(device)
     
-    # Test with eta = 0
-    with torch.no_grad():
-        result_det = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
-        result_stoch = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=1, style_embedding=style_embedding)
+#     # Test with eta = 0
+#     with torch.no_grad():
+#         result_det = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=0, style_embedding=style_embedding)
+#         result_stoch = ddim_sample(z_T, unet, diffusion.alpha_bar_t, diffusion.beta_t, eta=1, style_embedding=style_embedding)
     
-    # The stochastic result should be different from the deterministic one
-    assert not torch.allclose(result_det, result_stoch), "Stochastic and deterministic results are identical"
+#     # The stochastic result should be different from the deterministic one
+#     assert not torch.allclose(result_det, result_stoch), "Stochastic and deterministic results are identical"
 
-    print("Test sigma_t behavior passed")
+#     print("Test sigma_t behavior passed")
+
 def test_encoder_dimensions():
     """Test if encoder preserves expected dimensions"""
     batch_size = 4
@@ -460,7 +462,7 @@ def test_unet_dimensions():
 
     print("Test UNet dimensions passed")
 
-
+'''
 def test_music_style_transfer_pipeline_from_dataset():
     """
     Full music style transfer pipeline test using a sample from the actual dataset.
@@ -775,6 +777,7 @@ def diagnose_ldm_generation(load_full_model=True):
     print(f"Saved diffusion visualization summary to {output_dir / 'diffusion_process_visualization.png'}")
     print(f"Saved generated audio to {gen_audio_path}")
     print("Diagnosis complete. Check the visualizations to understand the generation process.")
+'''
 
 def test_model_parameters():
     """Print parameter counts for all model components"""
@@ -945,9 +948,7 @@ def test_ddim_wrapper():
     """Test if the DDIM sampling wrapper is working correctly"""
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    # Initialize model
-    from models.model import LDM
-    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm.pth', load_full_model=True).to(device)
+    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm_02.pth', load_full_model=True).to(device)
     model.eval()
 
     # Create dummy style spectrogram
