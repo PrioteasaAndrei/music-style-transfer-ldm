@@ -1,0 +1,93 @@
+\section{Methodology}
+
+\subsection{Architecture Overview}
+Our approach to music style transfer is based on a Latent Diffusion Model (LDM) architecture that operates on spectrograms. The system consists of several key components:
+
+\begin{itemize}
+    \item \textbf{Spectrogram Encoder}: Compresses the input spectrogram into a latent space
+    \item \textbf{Style Encoder}: Processes style spectrograms to extract multi-resolution style embeddings
+    \item \textbf{Forward Diffusion}: Implements the noise addition process
+    \item \textbf{UNet}: Predicts noise during the reverse diffusion process
+    \item \textbf{Spectrogram Decoder}: Reconstructs the final spectrogram from the latent space
+\end{itemize}
+
+\subsection{Data Processing}
+The audio processing pipeline involves:
+\begin{itemize}
+    \item Converting audio to spectrograms using Short-Time Fourier Transform (STFT)
+    \item Normalizing spectrograms to a fixed size (128x128)
+    \item Applying appropriate scaling and normalization for model input
+\end{itemize}
+
+\subsection{Model Components}
+
+\subsubsection{Spectrogram Encoder}
+The encoder compresses the input spectrogram into a latent space using a series of convolutional layers:
+\begin{lstlisting}
+class SpectrogramEncoder(nn.Module):
+    def __init__(self, latent_dim=4):
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, latent_dim, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(latent_dim)
+        )
+\end{lstlisting}
+
+\subsubsection{Style Encoder}
+The style encoder processes style spectrograms to extract multi-resolution embeddings:
+\begin{lstlisting}
+class StyleEncoder(nn.Module):
+    def __init__(self, in_channels=1, num_filters=64):
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=2, padding=1)
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=2, padding=1)
+        self.enc5 = nn.Conv2d(num_filters * 4, num_filters * 4, kernel_size=3, stride=2, padding=1)
+        self.enc6 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)
+\end{lstlisting}
+
+\subsection{Training Process}
+The training process involves several key steps:
+
+\begin{enumerate}
+    \item \textbf{Autoencoder Training}:
+    \begin{itemize}
+        \item Train the encoder and decoder for spectrogram reconstruction
+        \item Use perceptual loss and KL regularization
+        \item Freeze the encoder after training
+    \end{itemize}
+    
+    \item \textbf{Style Transfer Training}:
+    \begin{itemize}
+        \item Train the UNet with style conditioning
+        \item Use diffusion loss and style loss
+        \item Implement DDIM sampling for inference
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Loss Functions}
+The model uses multiple loss components:
+
+\begin{itemize}
+    \item \textbf{Compression Loss}:
+    \begin{equation}
+        L_{comp} = L_{mse} + 0.1L_{perceptual} + 0.01L_{kl}
+    \end{equation}
+    
+    \item \textbf{Diffusion Loss}:
+    \begin{equation}
+        L_{diff} = \| \epsilon_\theta(z_t, t, s) - \epsilon \|_2^2
+    \end{equation}
+    
+    \item \textbf{Style Loss}:
+    \begin{equation}
+        L_{style} = \| \phi(reconstructed) - \phi(style) \|_2^2
+    \end{equation}
+\end{itemize}
+
+The perceptual loss is implemented using VGGish features, which are particularly effective for audio processing tasks. The style loss helps ensure that the transferred spectrogram maintains the characteristics of the target style while preserving the content of the original audio. 
