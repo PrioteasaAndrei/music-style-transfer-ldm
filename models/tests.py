@@ -1,6 +1,6 @@
 import torch
 import pytest
-from model import ddim_sample, ForwardDiffusion, UNet, LDM
+from model import ForwardDiffusion, UNet, LDM
 from model import SpectrogramEncoder, SpectrogramDecoder
 from config import config
 from model import StyleEncoder
@@ -945,9 +945,7 @@ def test_ddim_wrapper():
     """Test if the DDIM sampling wrapper is working correctly"""
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
-    # Initialize model
-    from models.model import LDM
-    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm.pth, 'load_full_model=True).to(device)
+    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm.pth', load_full_model=True).to(device)
     model.eval()
 
     # Create dummy style spectrogram
