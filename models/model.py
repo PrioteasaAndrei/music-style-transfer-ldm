@@ -311,6 +311,9 @@ class LDM(nn.Module):
                     # Freeze encoder weights
                     for param in self.encoder.parameters():
                         param.requires_grad = False
+
+                    for param in self.decoder.parameters():
+                        param.requires_grad = True
                     
                     return
                 
