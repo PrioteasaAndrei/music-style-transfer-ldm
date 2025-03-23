@@ -1,6 +1,6 @@
 
 config = {
-    'learning_rate': 5e-4,
+    'learning_rate': 5e-3,
     'learning_rate_factor': 0.5,
     'learning_rate_patience': 5,
     'learning_rate_min': 1e-6,
