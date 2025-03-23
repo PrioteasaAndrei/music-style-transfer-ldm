@@ -28,12 +28,13 @@ def compression_loss(original, reconstructed, latent):
     mse_loss = nn.MSELoss()(reconstructed, original)
 
     # Perceptual loss (Optional)
-    perceptual_loss_value = perceptual_loss(original, reconstructed)
+    # perceptual_loss_value = perceptual_loss(original, reconstructed)
 
     # KL Regularization (Applied to latent space directly)
     kl_loss = kl_regularization_loss(latent)
 
-    return mse_loss + 0.1 * perceptual_loss_value + 0.01 * kl_loss
+    # lets try without the LPIPS loss
+    return mse_loss + 0.01 * kl_loss
 
 
 def diffusion_loss(noise_pred, noise_target):
