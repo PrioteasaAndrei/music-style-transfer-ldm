@@ -247,7 +247,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
 
 
 class LDM(nn.Module):
-    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', num_timesteps=config['forward_diffusion_num_timesteps'], load_full_model=False):
+    def __init__(self, latent_dim, pretrained_path: str = 'models/pretrained/', pretraind_filename: str = 'ldm.pth', num_timesteps=config['forward_diffusion_num_timesteps'], load_full_model=False):
         super(LDM, self).__init__()
         
         # First create all components with correct initialization
@@ -272,7 +272,7 @@ class LDM(nn.Module):
                         map_location = 'cpu'
                     
                     # Create a state dict with just encoder and decoder
-                    state_dict = torch.load(pretrained_path + 'ldm.pth', map_location=map_location)
+                    state_dict = torch.load(pretrained_path + pretraind_filename, map_location=map_location)
                     
                     # Manually load components instead of full model
                     # This avoids issues with module names not matching

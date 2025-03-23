@@ -947,7 +947,7 @@ def test_ddim_wrapper():
     
     # Initialize model
     from models.model import LDM
-    model = LDM(latent_dim=config['latent_dim_encoder'], load_full_model=True).to(device)
+    model = LDM(latent_dim=config['latent_dim_encoder'], pretraind_filename='ldm.pth, 'load_full_model=True).to(device)
     model.eval()
 
     # Create dummy style spectrogram
