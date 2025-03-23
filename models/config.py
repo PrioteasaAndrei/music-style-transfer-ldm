@@ -13,5 +13,5 @@ config = {
     'processed_spectograms_dataset_folderpath': 'processed_images',
     'pairing_file_path': 'spectrogram_pair_dataset_pairings.csv',
     'unet_num_filters': 64,
-    'forward_diffusion_num_timesteps': 250,
+    'forward_diffusion_num_timesteps': 1000,
 }

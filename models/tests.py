@@ -940,7 +940,59 @@ def test_vggish_loss():
 
     print(feature_loss)
 
+
+def test_ddim_wrapper():
+    """Test if the DDIM sampling wrapper is working correctly"""
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     
+    # Initialize model
+    from models.model import LDM
+    model = LDM(latent_dim=config['latent_dim_encoder'], load_full_model=True).to(device)
+    model.eval()
+
+    # Create dummy style spectrogram
+    style_spec = torch.randn(1, 1, 128, 128).to(device)
+    
+    # Define latent shape matching encoder output dimensions
+    z_shape = (1, 32, 16, 16)  # [batch, latent_dim, height/8, width/8]
+    
+    # Test with different timesteps and eta values
+    timesteps_list = [10, 50, 100]
+    eta_list = [0.0, 0.5, 1.0]
+    
+    for timesteps in timesteps_list:
+        for eta in eta_list:
+            print(f"\nTesting DDIM with timesteps={timesteps}, eta={eta}")
+            
+            # Generate sample
+            with torch.no_grad():
+                output = model.style_ddim_sample_wrapper(
+                    z_shape=z_shape,
+                    style_spec=style_spec,
+                    timesteps=timesteps,
+                    eta=eta
+                )
+            
+            # Check output properties
+            print(f"Output shape: {output.shape}")
+            print(f"Output range: [{output.min():.3f}, {output.max():.3f}]")
+            assert output.shape == (1, 1, 128, 128), "Output shape mismatch"
+            assert torch.all(output >= 0) and torch.all(output <= 1), "Output range error"
+            
+            # Check if different eta values produce different results
+            if eta > 0:
+                with torch.no_grad():
+                    output2 = model.style_ddim_sample_wrapper(
+                        z_shape=z_shape,
+                        style_spec=style_spec,
+                        timesteps=timesteps,
+                        eta=eta
+                    )
+                # With eta > 0, outputs should differ due to stochasticity
+                assert not torch.allclose(output, output2), f"Outputs identical with eta={eta}"
+            
+    print("DDIM wrapper test completed successfully")
+
 
 if __name__ == "__main__":
     # test_ddim_deterministic()
@@ -964,5 +1016,6 @@ if __name__ == "__main__":
     # test_model_parameters()
     # test_dead_style_encoder()
     # test_different_images_loader()
-    test_vggish_loss()
+    # test_vggish_loss()
+    test_ddim_wrapper()
     print("All tests passed!")
