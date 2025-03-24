@@ -36,7 +36,7 @@ VGGishFeatureLoss & Pretrained VGGish model to extract features from the spectro
 
 \subsubsection{Spectrogram Encoder and decoder}
 The encoder compresses the input spectrogram into a latent space using a series of convolutional layers, which allows for unrestricted input size:
-\begin{lstlisting}
+\begin{lstlisting}[basicstyle=\tiny]
 class SpectrogramEncoder(nn.Module):
     def __init__(self, latent_dim=4):
         self.encoder = nn.Sequential(
@@ -52,7 +52,7 @@ class SpectrogramEncoder(nn.Module):
 \end{lstlisting}
 
 \noindent  The decoder mirrors the encoder architecture but uses transposed convolutions to upsample back to the original dimensions, normalizing the output to be between -1 and 1:
-\begin{lstlisting}
+\begin{lstlisting}[basicstyle=\tiny]
 class SpectrogramDecoder(nn.Module):
     def __init__(self, latent_dim=4):
         self.decoder = nn.Sequential(
@@ -72,7 +72,7 @@ class SpectrogramDecoder(nn.Module):
 \subsubsection{Style Encoder}
 The style encoder processes style spectrograms to extract multi-resolution embeddings. Activation maps from different convolutional layers are extracted and used as conditioning mechianisms in the UNet, thorugh the Cross Attention mechanism.
 
-\begin{lstlisting}
+\begin{lstlisting}[basicstyle=\tiny]
 class StyleEncoder(nn.Module):
     def __init__(self, in_channels=1, num_filters=64):
         self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=2, padding=1)
@@ -86,7 +86,10 @@ class StyleEncoder(nn.Module):
 \subsubsection{UNet}
 The UNet is a standard denoising diffusion model, which is used to denoise the latent representation of the spectrogram. The UNet is conditioned on the style embeddings extracted by the style encoder using the Cross Attention mechanism. Skip connections are used to improve the training process. We use a sinusoidal position embedding to encode the time step in the UNet.
 
-\begin{lstlisting}
+
+\newpage
+
+\begin{lstlisting}[basicstyle=\tiny]
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_filters=64):
         super(UNet, self).__init__()
@@ -122,8 +125,72 @@ class UNet(nn.Module):
 
 \end{lstlisting}
 
+\subsubsection{ForwardDiffusion}
 
-\subsection{VGGishFeatureLoss}
+The forward diffusion process gradually adds Gaussian noise to the input data over a fixed number of timesteps. At each timestep $t$, the process is defined by:
+
+\begin{equation}
+    q(z_t|z_{t-1}) = \mathcal{N}(z_t; \sqrt{1-\beta_t}z_{t-1}, \beta_t\mathbf{I})
+\end{equation}
+
+\noindent where $\beta_t$ is a variance schedule that controls how much noise is added at each step. The process can be written in a closed form for any timestep $t$ as:
+
+\begin{equation}
+    q(z_t|z_0) = \mathcal{N}(z_t; \sqrt{\bar{\alpha}_t}z_0, (1-\bar{\alpha}_t)\mathbf{I})
+\end{equation}
+
+\noindent where $\alpha_t = 1-\beta_t$ and $\bar{\alpha}_t = \prod_{s=1}^t \alpha_s$. This allows us to sample $z_t$ directly for any timestep using the reparameterization trick:
+
+\begin{equation}
+    z_t = \sqrt{\bar{\alpha}_t}z_0 + \sqrt{1-\bar{\alpha}_t}\epsilon, \quad \epsilon \sim \mathcal{N}(0, \mathbf{I})
+\end{equation}
+
+The reverse process then learns to gradually denoise the data by predicting the noise $\epsilon$ at each timestep. Given a noisy sample $z_t$ and timestep $t$, we can predict the original input $z_0$ using:
+
+\begin{equation}
+    z_0 = \frac{z_t - \sqrt{1-\bar{\alpha}_t}\epsilon_\theta(z_t,t)}{\sqrt{\bar{\alpha}_t}}
+\end{equation}
+
+\noindent where $\epsilon_\theta$ is our UNet model that predicts the noise. This formulation allows for stable training and high-quality generation.
+
+\subsubsection{Sinusoidal Position Embeddings}
+
+The diffusion process requires knowledge of the timestep $t$ to properly denoise the data. However, neural networks work best with continuous representations rather than discrete timestep indices. Therefore, we use sinusoidal position embeddings to encode the timestep information in a way that the network can effectively utilize.
+
+The sinusoidal encoding transforms a scalar timestep $t$ into a high-dimensional vector using sine and cosine functions at different frequencies:
+
+\begin{equation}
+    PE_{(pos,2i)} = \sin(pos/10000^{2i/d_{model}})
+\end{equation}
+\begin{equation}
+    PE_{(pos,2i+1)} = \cos(pos/10000^{2i/d_{model}})
+\end{equation}
+
+\noindent where $pos$ is the timestep and $i$ is the dimension. This encoding has several desirable properties:
+
+\begin{itemize}
+    \item It provides a unique encoding for each timestep
+    \item The encoding varies smoothly with the timestep, allowing the model to interpolate between timesteps
+    \item It captures both absolute and relative position information through the different frequency components
+    \item The encoding is deterministic and requires no training
+\end{itemize}
+
+
+\noindent We employ the sinusoidal position embeddings to condition the model on the timestep. This is implemented as a multi-layer perceptron (MLP) that processes the timestep embedding:
+
+\begin{lstlisting}[basicstyle=\tiny]
+self.time_mlp = nn.Sequential(
+    SinusoidalPositionEmbeddings(time_emb_dim),
+    nn.Linear(time_emb_dim, time_emb_dim),
+    nn.GELU(),
+    nn.Linear(time_emb_dim, time_emb_dim),
+)
+\end{lstlisting}
+
+\noindent The MLP first converts the scalar timestep into a high-dimensional embedding using sinusoidal position embeddings, then processes it through two linear layers with a GELU activation. This processed timestep embedding is then injected into multiple layers of the UNet to condition its denoising behavior on the specific timestep. This approach, originally introduced in the Transformer architecture \cite{vaswani2017attention}, has proven effective for encoding sequential position information in various deep learning applications, including diffusion models.
+
+
+\subsubsection{VGGishFeatureLoss}
 The VGGishFeatureLoss is a loss function that uses the pretrained VGGish model to extract features from the spectrogram and the reconstructed spectrogram, and then computes the mean squared error at different resolutions between the two. CITE PAPER HERE
 
 
