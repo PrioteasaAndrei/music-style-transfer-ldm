@@ -21,21 +21,22 @@ def perceptual_loss_old(original, reconstructed):
     return feature_extractor(original, reconstructed).mean()
 
 
-def perceptual_loss(original, reconstructed, feature_extractor_type:str = 'vggish'):
+def perceptual_loss(original, reconstructed, feature_extractor_type:str = 'vggish', feature_extractor=None):
     if feature_extractor_type == 'vggish':
-        vgg_feature_loss = VGGishFeatureLoss()
+        assert feature_extractor is not None, "Feature extractor must be provided for VGGish"
+        vgg_feature_loss = feature_extractor
         return vgg_feature_loss(original, reconstructed)
     else:
         return perceptual_loss_old(original, reconstructed)
 def kl_regularization_loss(latent):
     return torch.mean(0.5 * (latent.pow(2) - 1 - torch.log(latent.pow(2) + 1e-8)))
 
-def compression_loss(original, reconstructed, latent):
+def compression_loss(original, reconstructed, latent, feature_extractor):
 
     mse_loss = nn.MSELoss()(reconstructed, original)
 
     # Perceptual loss (Optional)
-    perceptual_loss_value = perceptual_loss(original, reconstructed, config['compression_feature_extractor'])
+    perceptual_loss_value = perceptual_loss(original, reconstructed, config['compression_feature_extractor'], feature_extractor=feature_extractor)
 
     # KL Regularization (Applied to latent space directly)
     kl_loss = kl_regularization_loss(latent)

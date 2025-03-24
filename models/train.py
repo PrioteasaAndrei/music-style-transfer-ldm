@@ -27,14 +27,21 @@ else:
 
 def train_autoencoder(config):
     # Initialize components
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if device.type == 'cuda':
+        print("Using GPU")
+    else:
+        raise RuntimeError("GPU not available, please check your setup.")
     
     # Load autoencoder
     encoder = SpectrogramEncoder(config['latent_dim_encoder']).to(device)
     decoder = SpectrogramDecoder(config['latent_dim_encoder']).to(device)
 
     # Feature extractor for perceptual loss (e.g., pretrained CNN on spectrograms)
-    feature_extractor = None  # Set this to a pretrained model if needed
+    # feature_extractor = None  # Set this to a pretrained model if needed
+    feature_extractor = VGGishFeatureLoss().to(device)
 
     # Optimizer
     optimizer = optim.AdamW(list(encoder.parameters()) + list(decoder.parameters()), lr=config['learning_rate'])
@@ -173,7 +180,7 @@ class LDMTrainer:
         z_t = outputs['z_t']
   
         denoisinsg_loss = diffusion_loss(noise_pred, noise)
-        compression_loss_ = compression_loss(content_spec, reconstructed, z_0)
+        compression_loss_ = compression_loss(content_spec, reconstructed, z_0, self.model.feature_loss_net)
         style_loss_ = style_loss(reconstructed, style_spec, self.model.feature_loss_net)
         
         total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
