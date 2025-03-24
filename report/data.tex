@@ -1,0 +1,438 @@
+\section{Dataset Creation and Processing}
+
+\subsection{Data Selection}
+For this project, we focused on isolated instrument recordings, so recordings where only i.e. a piano or only a guitar are played.
+The idea behind this is to maintain simplicity and clarity in our audio style transfer tasks and to potentially decrease the complexity of the task for the model.
+This approach allows us to focus on learning the characteristics of individual instruments without the interference of other sounds or instruments.
+For now we selected the following instruments for our dataset:
+\begin{itemize}
+    \item Piano
+    \item Acoustic Guitar
+    \item Harp
+    \item Violin
+\end{itemize}
+
+\subsection{Data Acquisition}
+\label{sec:data_acquisition}
+We developed an automated pipeline for downloading instrument recordings from \texttt{YouTube} using the \texttt{yt-dlp} library~\cite{youtube,yt-dlp}.
+The yt-dlp additionally acts as a wrapper for \texttt{FFmpeg}~\cite{ffmpeg} for certain audio conversion and processing tasks, providing easy access to its functionality.
+\\\\
+The data acquisition process followed these steps:
+
+\begin{enumerate}
+    \item Manually search for instrument-specific videos that contained isolated recordings
+    \item Create a CSV file with columns for instrument labels, titles, and YouTube URLs
+    \item Process the data using our custom \texttt{AudioDownloader} class which:
+        \begin{itemize}
+            \item Reads the CSV file to extract instrument categories, titles, and URLs
+            \item Creates a hierarchical folder structure with separate directories for each instrument type
+            \item Downloads high-quality audio streams using \texttt{yt-dlp} with the \texttt{bestaudio/best} format option
+            \item Converts downloads to MP3 format via FFmpeg
+            \item Names files consistently based on titles and saves them in the corresponding instrument subfolder
+        \end{itemize}
+    \item The resulting folder structure follows common conventions for organizing datasets on disk:
+        \begin{verbatim}
+        \label{code:music_directory_structure}
+        downloads/
+        |-- {instrument_name}/
+        |   |-- {title}.mp3
+        \end{verbatim}
+\end{enumerate}
+
+The core functionality of our \texttt{AudioDownloader} class relies on the \texttt{download\_audio} method, which handles the actual download process:
+
+\begin{lstlisting}[caption=AudioDownloader's download\_audio method]
+def download_audio(self, youtube_url: str, filename=None) -> str:
+    """
+    Downloads the audio stream from the provided YouTube URL using youtube-dlp.
+    Additional documentation: https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#format-selection
+    :param youtube_url: URL of the YouTube video.
+    :param filename: Desired filename (with extension). If None, uses video's title.
+    :return: Path to the downloaded audio file.
+    """
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": (
+            os.path.join(self.output_path, "%(title)s.%(ext)s")
+            if filename is None
+            else os.path.join(self.output_path, filename)
+        ),
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": self.codec,
+                "preferredquality": "192",
+            }
+        ],
+    }
+
+    with ytdlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(youtube_url, download=True)
+        if filename is None:
+            filename = os.path.join(self.output_path, f"{info.get('title', 'audio')}.{self.codec}")
+        return filename
+\end{lstlisting}
+
+Using the \texttt{AudioDownloader} is straightforward, as shown by this simple code snippet that processes youtube videos from a CSV file:
+
+\begin{lstlisting}[caption=Example usage of AudioDownloader with CSV]
+downloader = AudioDownloader(output_path="downloads", codec="mp3")
+# Multiple URLs from CSV
+downloaded_files = downloader.download_from_csv("data/youtube_urls.csv")
+\end{lstlisting}
+
+\subsection{Audio Preprocessing and Spectrogram Generation}
+
+Raw audio signals need to be transformed into a representation suitable for our models.
+For this we convert the audio signals into spectrograms, which are visual representations of the frequency spectrum of audio signals over time.
+Since the architecture we are using is most known for image generation, we think this is a good approach to make sure our model can understand the data.
+To archive this we undergo multiple steps, which we describe in the following:
+
+\paragraph{Audio Loading and Preprocessing}
+The first step involves loading audio files and preparing them for further processing:
+
+\begin{lstlisting}[caption=Audio loading and silence trimming]
+def load_audio(self, filepath):
+    """
+    Loads an audio file using librosa.
+    :param filepath: Path to the audio file.
+    :return: Tuple of (audio time series, sampling rate).
+    """
+    audio, sr = librosa.load(filepath, sr=self.target_sr, mono=True)
+    return audio, sr
+
+def trim_silence(self, audio, top_db=20):
+    """
+    Trims the silence from the beginning and end of an audio signal.
+    :param audio: Audio time series.
+    :param top_db: Threshold (in decibels) below reference to consider as silence.
+    :return: The trimmed audio.
+    """
+    trimmed_audio, _ = librosa.effects.trim(audio, top_db=top_db)
+    return trimmed_audio
+\end{lstlisting}
+
+By loading all audio at a standardized sampling rate of 22050 Hz, we ensure consistent processing regardless of the original recording quality. 
+Trimming silence removes non-musical portions that could bring inconsistency to the dataset.
+
+\paragraph{Mel Spectrogram Generation}
+Next, we convert the preprocessed audio into spectrograms.
+More specifically, we use mel-spectrograms, which are a type of spectrogram that uses the mel scale instead of the linear frequency scale in the y-direction.
+The mel-scale is different from the linear frequency scale in that it is more aligned with human perception of sound. It compresses the frequency axis, grouping frequencies which are perceived as similar by the human ear into bins.
+With the number of bins being adjustable. Grouping the frequencies into bins allows us to drastically reduce the dimensionality and complexity of the data in y-direction.
+All of this while keeping characteristics of the original instrument and audio intact.
+
+We perform this transformation using the \texttt{librosa}~\cite{librosa}, which is a powerful python library for audio analysis.
+To extract the mel-spectrogram, we utilize our \texttt{get\_mel\_spectrogram} method:
+
+\begin{lstlisting}[caption=Mel spectrogram extraction]
+def get_mel_spectrogram(self, audio, sr, n_mels=128):
+    """
+    Extracts a Mel spectrogram from the audio.
+    :param audio: Audio time series.
+    :param sr: Sampling rate.
+    :return: Log-scaled Mel spectrogram.
+    """
+    mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
+    log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
+    return log_mel_spec
+\end{lstlisting}
+
+This transformation involves:
+\begin{itemize}
+    \item Applying a Short-Time Fourier Transform (STFT) to convert time-domain signals to frequency domain
+    \item Mapping the linear frequency spectrum to the mel scale.
+    \item We mostly use 128 mel frequency bands. While testing different values as well as their reconstructions, we found that 128 bands capture sufficient information to reconstruct the original audio file with acceptable quality while at the same time keeping the dimensions low.
+    \item Converting the spectrograms to decibel scale.
+\end{itemize}
+
+
+\paragraph{Spectrogram to Image Conversion}
+To make spectrograms easily compatible with our architecture and processing pipeline, we convert them to standardized grayscale images:
+
+\begin{lstlisting}[caption=Converting spectrograms to grayscale images]
+def mel_spectrogram_to_grayscale_image(self, spectrogram, max_db=80):
+    """
+    Converts a log-scaled Mel spectrogram to an image.
+    :param spectrogram: Log-scaled Mel spectrogram.
+    :param max_db: Maximum decibel value for clipping.
+    :return: Image of the Mel spectrogram.
+    """
+    # Shift to positive values
+    spectrogram = spectrogram + max_db
+    # Scale to 0-255 (grayscale)
+    spectrogram = spectrogram * (255.0 / max_db)
+    # Clip out of bounds
+    spectrogram = np.clip(spectrogram, 0, 255)
+    # Do rounding trick and convert to uint8
+    spectrogram = (spectrogram + 0.5).astype(np.uint8)
+    
+    # Create an image
+    image = Image.fromarray(spectrogram)
+    return image
+\end{lstlisting}
+
+This conversion process includes:
+\begin{itemize}
+    \item Since log-scaled  mel-spectrogram values typically range from -80 dB to 0 dB, adding an 80 dB offset shifts the values to the range [0, 80]. This step converts negative values to positive values, which is necessary for image representation.
+    \item The shifted values are then scaled from the [0, 80] range to the standard [0, 255] range required for 8-bit grayscale images.
+    \item After scaling, any values outside the [0, 255] range are clipped to ensure that they stay within valid image intensity bounds.
+    \item To ensure each value is rounded to the nearest integer, a rounding step (by adding 0.5) is applied before conversion.
+    \item Finally, the processed array is converted into a PIL Image, making it more suitable for storage.
+\end{itemize}
+
+\paragraph{Complete Processing Pipeline}
+With these individual components established, we created a comprehensive pipeline that processes our entire dataset:
+
+\begin{lstlisting}[caption=Full audio-to-spectrogram processing pipeline]
+def build_dataset_folder_structure(
+    mp3_dir="downloads", output_root="processed_images", chunk_size_sec=3, max_duration=1800, n_mels=128
+):
+    """
+    Process audio files in the mp3_dir, generate spectrogram images,
+    and save them into folders (named after instrument labels) under output_root.
+
+    :param mp3_dir: Directory containing the audio files.
+    :param output_root: Root directory to save processed spectrogram images.
+    :param chunk_size_sec: Duration of each audio chunk in seconds.
+    :param max_duration: Maximum duration to process per file (in seconds).
+    """
+    ap = AudioPreprocessor()
+    mp3_dir = Path(mp3_dir)
+    mp3_files = list(mp3_dir.rglob("*.mp3"))
+
+    for mp3_file in mp3_files:
+        # Use the parent directory's name as the instrument label.
+        instrument = mp3_file.parent.name
+        instrument_dir = Path(output_root) / instrument
+        instrument_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"Processing file: {mp3_file}")
+        # Load and preprocess audio.
+        audio, sr = ap.load_audio(mp3_file)
+        audio = ap.trim_silence(audio)
+
+        # Calculate the number of samples per chunk.
+        chunk_size = int(chunk_size_sec * sr)
+
+        for chunk_idx, i in enumerate(range(0, len(audio), chunk_size)):
+            if max_duration is not None and (i / sr) >= max_duration:
+                break
+            chunk = audio[i : i + chunk_size]
+            if len(chunk) < chunk_size:
+                chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode="constant")
+
+            spectrogram = ap.get_mel_spectogram(chunk, sr, n_mels=n_mels)
+            image_pil = ap.mel_spectogram_to_grayscale_image(spectrogram)
+
+            filename = f"{mp3_file.stem}_chunk{chunk_idx}.png"
+            image_path = instrument_dir / filename
+            image_pil.save(image_path)
+            print(f"Saved image: {image_path}")
+        print(f"Finished processing file: {mp3_file}")
+
+\end{lstlisting}
+
+
+For this we first split each recording into 3-second chunks. This allows us to on the one hand create more samples in our dataset, but also keep the later training time reasonable.
+Since right now our dataset consists of very long recordings, one per instrument, we additionally can archive an equal split per instrument lable by limiting the maximum duration of each recording by the length of the shortest recording.
+This is 30 minutes in our case.
+We hereby ensure that no instrument is over- or underrepresented in our dataset.
+As mentioned before, we decide to use 128 mel frequency bands for our mel-spectrograms.
+The chunking process is done by iterating over the audio signal in steps of 3 seconds, and for each chunk, we generate a mel spectrogram and convert it to an image.
+The final dataset structure mirrors our original audio organization, with each instrument having its own folder of 3 second spectrogram images.
+
+
+
+
+\subsection{PyTorch Dataset Creation}
+To later enable easy usage and compatibility in training throughout the pytorch training process, we created a custom dataset class that handles loading and processing of our images.
+
+\paragraph{SpectrogramDataset}
+First for just simple loading of the spectrogram images we created the following \texttt{SpectrogramDataset} class, which inherits from \texttt{torch.utils.data.Dataset}:
+
+\begin{lstlisting}[caption=Custom Dataset Class]
+class SpectrogramDataset(Dataset):
+    def __init__(self, config):
+        super(SpectrogramDataset, self).__init__()
+        self.image_dir_path = config["processed_spectograms_dataset_folderpath"]
+        self.data = datasets.ImageFolder(root=self.image_dir_path, transform=self._get_transform())
+
+    def __getitem__(self, idx):
+        x, y = self.data[idx]
+        return x, y
+
+    def __len__(self):
+        return len(self.data)
+
+    def _get_transform(self):
+        """
+        Define the transformations to be applied to the images.
+        :return: Transformations
+        """
+        return transforms.Compose(
+            [
+                # add crop from 130 to 128
+                # ! If the chunk size is different, this needs to be changed
+                transforms.Lambda(lambda x: x.crop((0, 0, 128, 128))),  # Crop to 128x128
+                transforms.Grayscale(),  # Needed because ImageFolder by default converts to RGB -> convert back
+                transforms.ToTensor(),  # Automatically normalizes [0,255] to [0,1]
+            ]
+        )
+
+\end{lstlisting}
+
+
+Our custom dataset class utilizes PyTorch's \texttt{ImageFolder} to efficiently load spectrograms organized by instrument folders. 
+This approach leverages the folder structure we established during the preprocessing phase. 
+The transforms in \texttt{\_get\_transform()} ensure consistency across all images while preserving their essential characteristics. 
+
+Transform steps include cropping the images to 128x128 pixels. 
+This is necessary because, while the original images have a y-dimension of 128 (matching the number of mel frequency bands), 
+the x-dimension is 130 pixels due to an interplay of multiple factors during the processing pipeline:
+\\
+
+The x-dimension (time frames) is calculated using the formula:
+
+\[
+T = \left\lceil \frac{D \times F_s}{H} \right\rceil
+\]
+
+Where \(D\) is the duration of each audio chunk in seconds, \(F_s\) is the sampling rate, and \(H\) is the hop length of the STFT.
+
+Substituting with the actual values,
+
+\[
+T = \left\lceil \frac{3 \times 22050}{512} \right\rceil = \left\lceil 129.19 \right\rceil = 130
+\]
+
+this calculation results in 130 time frames, which explains the original x-dimension of the spectrogram images before cropping.
+We then again convert the images to grayscale, normalize and convert them to tensors.
+
+
+\paragraph{SpectrogramPairDataset}
+For our style transfer experiments, we needed a more specialized dataset that could provide pairs of spectrograms from different instrument categories.
+\\\\ 
+Our implementation allows us to draw predetermined instrument-to-instrument combinations for training, and also ensures an equal distribution of samples across all instrument categories.
+Moreover, this approach avoids storing a new dataset on disk but allows to load the images from the original data folder structure on the fly.
+\\\\
+To accomplish this, we implemented the \texttt{SpectrogramPairDataset}:
+
+\begin{lstlisting}[caption={Paired Dataset for Style Transfer}]
+class SpectrogramPairDataset(Dataset):
+    def __init__(self, root_folder, pairing_file, transform=None):
+        """
+        Args:
+            root_folder (str): Root directory with subfolders (each for one label).
+            pairing_file (str): Path to the CSV file with predetermined pairings.
+            transform: Transformations to apply to each image.
+        """
+        self.root_folder = root_folder
+        self.pairing_file = pairing_file
+        self.transform = transform if transform is not None else self._get_transform()
+
+        # Load the precomputed pairs from the CSV file.
+        # Each row in the CSV should contain: label1, idx1, label2, idx2
+        self.pairs = []
+        with open(self.pairing_file, "r") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                # Convert index strings to integers.
+                self.pairs.append((row[0], int(row[1]), row[2], int(row[3])))
+
+        # Build a dictionary of ImageFolder datasets keyed by label.
+        self.datasets = {}
+        # Sorting the subfolders ensures deterministic order.
+        for folder in sorted(os.listdir(root_folder)):
+            folder_path = os.path.join(root_folder, folder)
+            if os.path.isdir(folder_path):
+                # Assume the folder name is the label.
+                self.datasets[folder] = ImageFolderNoSubdirs(root=folder_path, transform=self.transform)
+
+    def __len__(self):
+        return len(self.pairs)
+
+    def __getitem__(self, index):
+        # Use the index to get the predetermined pairing.
+        label1, idx1, label2, idx2 = self.pairs[index]
+        img1, _ = self.datasets[label1][idx1]
+        img2, _ = self.datasets[label2][idx2]
+        return (img1, label1), (img2, label2)
+\end{lstlisting}
+
+The \texttt{SpectrogramPairDataset} works by loading multiple \\
+\texttt{ImageFolderNoSubdirs} datasets with each only containing spectrograms from one instrument label.
+It then pairs these datasets based on the predetermined pairings stored in a CSV file on the fly.
+
+\texttt{ImageFolderNoSubdirs} is a custom class we implemented, that is a modified version of the standard \texttt{ImageFolder} class from PyTorch. 
+Since the \texttt{ImageFolder} class expects a specific folder structure of the dataset, as described in~\ref{sec:data_acquisition}, it does not allow for loading images of only one label from a single folder without subdirectories.
+We fix this issue by overwriting different methods of the PyTorch \texttt{ImageFolder} class.
+\\\\
+
+
+Rather than randomly selecting pairs during training, we generate these pairings in advance and save them to a CSV file:
+
+\begin{lstlisting}[caption={Generating predetermined pairs for consistency}]
+@classmethod
+def generate_pairings(cls, root_folder, output_file_path="spectrogram_pair_dataset_pairings.csv", num_pairs=15000):
+    """
+    Generates a CSV file containing the predetermined pairings.
+
+    Args:
+        root_folder (str): Root directory with subfolders for each label.
+        output_file (str): Path where the CSV file will be saved.
+        num_pairs (int): Number of pairs to generate.
+    """
+    # List of labels (i.e. subfolder names) sorted deterministically.
+    labels = sorted(
+        [folder for folder in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, folder))]
+    )
+
+    if len(labels) < 2:
+        raise ValueError("Need at least two classes to form pairs.")
+
+    # Create ImageFolder datasets for each label.
+    datasets_dict = {}
+    for label in labels:
+        folder_path = os.path.join(root_folder, label)
+        datasets_dict[label] = ImageFolderNoSubdirs(root=folder_path, transform=cls._get_transform())
+
+    pairs = []
+    # We precompute the pairs and save them as a file. Like this the future sampling is deterministic.
+    rng = np.random.RandomState(42)
+    for _ in range(num_pairs):
+        # Randomly select two distinct labels.
+        label1, label2 = rng.choice(labels, size=2, replace=False)
+        ds1, ds2 = datasets_dict[label1], datasets_dict[label2]
+        # Randomly select indices within each dataset.
+        idx1 = rng.randint(0, len(ds1))
+        idx2 = rng.randint(0, len(ds2))
+        pairs.append((label1, idx1, label2, idx2))
+
+    # Write the pairs to a CSV file.
+    with open(output_file_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        for pair in pairs:
+            writer.writerow(pair)
+    print(f"Pairings saved to {output_file_path}")
+\end{lstlisting}
+
+
+\paragraph{DataLoader Creation}
+By following the PyTorch conventions, we can now easily leverage the default PyTorch \texttt{DataLoader} class with all its functionality, to create data loaders for our datasets.
+
+\begin{lstlisting}[caption={Creating data loaders with train-test split}]
+def prepare_dataset(config):
+    dataset = SpectrogramDataset(config)
+    
+    # Split into training (80%) and testing (20%) sets
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False, num_workers=0)
+
+    return train_loader, test_loader
+\end{lstlisting}
+
