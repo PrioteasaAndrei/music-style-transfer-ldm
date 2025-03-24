@@ -1,6 +1,16 @@
 # Node modules
 node_modules/
 
+# Latex output temp files
+*.aux
+*.bbl
+*.blg
+*fdb_latexmk
+*.fls
+*.out
+*.synctex*
+*.toc
+
 # Local environment variables should not be committed.
 .env.local
 
