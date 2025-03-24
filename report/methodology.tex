@@ -1,28 +1,41 @@
 \section{Methodology}
 
+In this section, we will describe the methodology used to implement the proposed method. We will describe our approach to the architecture, the main components and the training process.
+
 \subsection{Architecture Overview}
-Our approach to music style transfer is based on a Latent Diffusion Model (LDM) architecture that operates on spectrograms. The system consists of several key components:
+We tried to stay as close to the original paper as possible in terms of architecture, but the paper did not provide a detailed description. The main components of our model are:
 
-\begin{itemize}
-    \item \textbf{Spectrogram Encoder}: Compresses the input spectrogram into a latent space
-    \item \textbf{Style Encoder}: Processes style spectrograms to extract multi-resolution style embeddings
-    \item \textbf{Forward Diffusion}: Implements the noise addition process
-    \item \textbf{UNet}: Predicts noise during the reverse diffusion process
-    \item \textbf{Spectrogram Decoder}: Reconstructs the final spectrogram from the latent space
-\end{itemize}
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|p{10cm}|}
+\hline
+\textbf{Component} & \textbf{Description} \\
+\hline
+Spectrogram Encoder & Compresses the input spectrogram into a latent space \\
+\hline
+Style Encoder & Processes style spectrograms to extract multi-resolution style embeddings \\
+\hline
+Forward Diffusion & Implements the noise scheduler \\
+\hline
+UNet & Denoises the latent representation \\
+\hline
+Spectrogram Decoder & Reconstructs the final spectrogram from the latent space \\
+\hline
+DDIM & Reverse sampling process for generating new samples \\
+\hline
+Cross-Attention & Adds style information to the denoising process \\
+\hline
+VGGishFeatureLoss & Pretrained VGGish model to extract features from the spectrogram \\
+\hline
+\end{tabular}
+\caption{Main components of the model architecture}
+\label{tab:model-components}
+\end{table}
 
-\subsection{Data Processing}
-The audio processing pipeline involves:
-\begin{itemize}
-    \item Converting audio to spectrograms using Short-Time Fourier Transform (STFT)
-    \item Normalizing spectrograms to a fixed size (128x128)
-    \item Applying appropriate scaling and normalization for model input
-\end{itemize}
+\noindent We will now briefly describe each of the components.
 
-\subsection{Model Components}
-
-\subsubsection{Spectrogram Encoder}
-The encoder compresses the input spectrogram into a latent space using a series of convolutional layers:
+\subsubsection{Spectrogram Encoder and decoder}
+The encoder compresses the input spectrogram into a latent space using a series of convolutional layers, which allows for unrestricted input size:
 \begin{lstlisting}
 class SpectrogramEncoder(nn.Module):
     def __init__(self, latent_dim=4):
@@ -38,8 +51,27 @@ class SpectrogramEncoder(nn.Module):
         )
 \end{lstlisting}
 
+\noindent  The decoder mirrors the encoder architecture but uses transposed convolutions to upsample back to the original dimensions, normalizing the output to be between -1 and 1:
+\begin{lstlisting}
+class SpectrogramDecoder(nn.Module):
+    def __init__(self, latent_dim=4):
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(latent_dim, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Tanh()
+        )
+\end{lstlisting}
+
+\noindent Both the encoder and decoder need to be pretrained on the spectrograms to be able to reconstruct the original audio. During the training process, we froze the encoder weights to prevent them from being updated, while leaving the decoder weights trainable. We describe this process in the experiments section.
+
 \subsubsection{Style Encoder}
-The style encoder processes style spectrograms to extract multi-resolution embeddings:
+The style encoder processes style spectrograms to extract multi-resolution embeddings. Activation maps from different convolutional layers are extracted and used as conditioning mechianisms in the UNet, thorugh the Cross Attention mechanism.
+
 \begin{lstlisting}
 class StyleEncoder(nn.Module):
     def __init__(self, in_channels=1, num_filters=64):
@@ -51,43 +83,88 @@ class StyleEncoder(nn.Module):
         self.enc6 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)
 \end{lstlisting}
 
+\subsubsection{UNet}
+The UNet is a standard denoising diffusion model, which is used to denoise the latent representation of the spectrogram. The UNet is conditioned on the style embeddings extracted by the style encoder using the Cross Attention mechanism. Skip connections are used to improve the training process. We use a sinusoidal position embedding to encode the time step in the UNet.
+
+\begin{lstlisting}
+class UNet(nn.Module):
+    def __init__(self, in_channels=1, out_channels=1, num_filters=64):
+        super(UNet, self).__init__()
+
+        # Define the channel dimensions used in your UNet
+        time_emb_dim = 128  # This should match the channel dimension where you add the time embedding
+        
+        self.time_mlp = nn.Sequential(
+            SinusoidalPositionEmbeddings(time_emb_dim),  # Match the channel dimension
+            nn.Linear(time_emb_dim, time_emb_dim),
+            nn.GELU(),
+            nn.Linear(time_emb_dim, time_emb_dim),
+        )
+
+        # Downsampling path with proper padding to maintain spatial dimensions
+        self.enc1 = nn.Conv2d(in_channels, num_filters, kernel_size=3, stride=1, padding=1)
+        self.enc2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, stride=2, padding=1)  # 128x128
+        self.enc3 = nn.Conv2d(num_filters * 2, num_filters * 4, kernel_size=3, stride=2, padding=1)  # 64x64
+        self.enc4 = nn.Conv2d(num_filters * 4, num_filters * 8, kernel_size=3, stride=2, padding=1)  # 32x32
+
+        # Cross attention layers with correct embedding dimensions
+        self.cross_attention1 = CrossAttention(embed_dim=512, num_heads=4)  # For 2x2 feature maps with 512 channels
+        self.cross_attention2 = CrossAttention(embed_dim=256, num_heads=4)  # For 4x4 feature maps with 256 channels
+
+        # Bottleneck
+        self.bottleneck = nn.Conv2d(num_filters * 8, num_filters * 8, kernel_size=3, stride=1, padding=1)
+
+        # Upsampling path with proper padding to maintain spatial dimensions
+        self.dec4 = nn.ConvTranspose2d(num_filters * 8, num_filters * 4, kernel_size=3, stride=2, padding=1, output_padding=1)  # 64x64
+        self.dec3 = nn.ConvTranspose2d(num_filters * 4, num_filters * 2, kernel_size=3, stride=2, padding=1, output_padding=1)  # 128x128
+        self.dec2 = nn.ConvTranspose2d(num_filters * 2, num_filters, kernel_size=3, stride=2, padding=1, output_padding=1)  # 256x256
+        self.dec1 = nn.Conv2d(num_filters, out_channels, kernel_size=3, stride=1, padding=1)
+
+\end{lstlisting}
+
+
+\subsection{VGGishFeatureLoss}
+The VGGishFeatureLoss is a loss function that uses the pretrained VGGish model to extract features from the spectrogram and the reconstructed spectrogram, and then computes the mean squared error at different resolutions between the two. CITE PAPER HERE
+
+
 \subsection{Training Process}
-The training process involves several key steps:
 
-\begin{enumerate}
-    \item \textbf{Autoencoder Training}:
-    \begin{itemize}
-        \item Train the encoder and decoder for spectrogram reconstruction
-        \item Use perceptual loss and KL regularization
-        \item Freeze the encoder after training
-    \end{itemize}
-    
-    \item \textbf{Style Transfer Training}:
-    \begin{itemize}
-        \item Train the UNet with style conditioning
-        \item Use diffusion loss and style loss
-        \item Implement DDIM sampling for inference
-    \end{itemize}
-\end{enumerate}
+Our training objective is a three part combination of a reconstruction loss, a style transfer loss and a diffusion loss. More formally, the training objective is:
 
-\subsection{Loss Functions}
-The model uses multiple loss components:
+\begin{equation}
+    L = L_{reconstruction} + L_{style} + L_{diffusion}
+\end{equation}
 
-\begin{itemize}
-    \item \textbf{Compression Loss}:
-    \begin{equation}
-        L_{comp} = L_{mse} + 0.1L_{perceptual} + 0.01L_{kl}
-    \end{equation}
-    
-    \item \textbf{Diffusion Loss}:
-    \begin{equation}
-        L_{diff} = \| \epsilon_\theta(z_t, t, s) - \epsilon \|_2^2
-    \end{equation}
-    
-    \item \textbf{Style Loss}:
-    \begin{equation}
-        L_{style} = \| \phi(reconstructed) - \phi(style) \|_2^2
-    \end{equation}
-\end{itemize}
+\noindent Specifically, the reconstruction loss is defined as:
 
-The perceptual loss is implemented using VGGish features, which are particularly effective for audio processing tasks. The style loss helps ensure that the transferred spectrogram maintains the characteristics of the target style while preserving the content of the original audio. 
+\begin{equation}
+    \begin{split}
+    L_{reconstruction}(x, \hat{x}, z) = \frac{1}{n}\sum_{i=1}^{n}(x_i - \hat{x}_i)^2 + \\
+    \lambda_{perceptual} \frac{1}{L}\sum_{l=1}^{L} MSE(\phi_l(x), \phi_l(\hat{x})) + \\
+    \lambda_{kl} \frac{1}{2}\mathbb{E}[z^2 - 1 - \log(z^2 + \epsilon)]
+    \end{split}
+\end{equation}
+
+\noindent where $\phi_l$ represents the feature maps at layer $l$ of the pretrained feature extractor network (VGGish or LPIPS). These feature maps capture increasingly abstract representations of the input spectrogram at different scales, from low-level features like edges in early layers to high-level semantic features in deeper layers.
+
+\vspace{1em}
+
+\noindent For the diffusion loss, we use the standard denoising diffusion loss which measures how well the model predicts noise at each timestep:
+% Diffusion Loss - measures how well the model predicts noise at each timestep
+\begin{equation}
+L_{diffusion}(\epsilon_\theta, \epsilon, t) = \frac{1}{n}\sum_{i=1}^{n}(\epsilon_{\theta,i}(z_t, t) - \epsilon_i)^2
+\end{equation}
+
+\noindent where $\epsilon_\theta$ is the predicted noise and $\epsilon$ is the true noise.
+
+\vspace{1em}
+
+\noindent For the style loss, we decide on measuring the MSE in the feature space of the pretrained feature extractor network (VGGish or LPIPS).
+
+\begin{equation}
+    L_{style}(x, \hat{x}, z) = 
+    \frac{1}{L}\sum_{l=1}^{L} MSE(\phi_l(x), \phi_l(\hat{x}))
+\end{equation}
+
+
+
