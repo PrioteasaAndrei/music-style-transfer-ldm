@@ -1,0 +1,104 @@
+% \section{Methods}
+
+% \subsection{Dataset}
+% The project uses a custom dataset for training and evaluation:
+% \begin{itemize}
+%     \item Spectrograms are processed to a fixed size of 128x128
+%     \item Data is organized in pairs of content and style spectrograms
+%     \item The dataset includes various musical styles and instruments
+%     \item Spectrograms are normalized to the range [-1, 1]
+% \end{itemize}
+
+% \subsection{Model Architecture}
+% The complete model architecture consists of several interconnected components:
+
+% \subsubsection{Latent Diffusion Model}
+% The main LDM class integrates all components:
+% \begin{lstlisting}
+% class LDM(nn.Module):
+%     def __init__(self, latent_dim, num_timesteps):
+%         self.encoder = SpectrogramEncoder(latent_dim)
+%         self.decoder = SpectrogramDecoder(latent_dim)
+%         self.style_encoder = StyleEncoder()
+%         self.forward_diffusion = ForwardDiffusion(num_timesteps)
+%         self.unet = UNet()
+% \end{lstlisting}
+
+% \subsubsection{UNet Architecture}
+% The UNet is designed to handle the diffusion process:
+% \begin{lstlisting}
+% class UNet(nn.Module):
+%     def __init__(self, in_channels=1, out_channels=1, num_filters=64):
+%         # Encoder path
+%         self.enc1 = nn.Conv2d(in_channels, num_filters, 3, padding=1)
+%         self.enc2 = nn.Conv2d(num_filters, num_filters*2, 3, stride=2, padding=1)
+%         self.enc3 = nn.Conv2d(num_filters*2, num_filters*4, 3, stride=2, padding=1)
+%         self.enc4 = nn.Conv2d(num_filters*4, num_filters*8, 3, stride=2, padding=1)
+        
+%         # Decoder path
+%         self.dec4 = nn.ConvTranspose2d(num_filters*8, num_filters*4, 4, stride=2, padding=1)
+%         self.dec3 = nn.ConvTranspose2d(num_filters*4, num_filters*2, 4, stride=2, padding=1)
+%         self.dec2 = nn.ConvTranspose2d(num_filters*2, num_filters, 4, stride=2, padding=1)
+%         self.dec1 = nn.Conv2d(num_filters, out_channels, 1)
+% \end{lstlisting}
+
+% \subsection{Training Pipeline}
+% The training process is implemented using PyTorch Lightning for efficient training:
+
+% \begin{enumerate}
+%     \item \textbf{Data Loading}:
+%     \begin{itemize}
+%         \item Custom DataLoader for spectrogram pairs
+%         \item Batch processing with appropriate normalization
+%         \item Data augmentation techniques
+%     \end{itemize}
+    
+%     \item \textbf{Training Loop}:
+%     \begin{itemize}
+%         \item Two-phase training: autoencoder and style transfer
+%         \item Gradient clipping and learning rate scheduling
+%         \item Checkpointing and model saving
+%     \end{itemize}
+    
+%     \item \textbf{Inference}:
+%     \begin{itemize}
+%         \item DDIM sampling for faster generation
+%         \item Style conditioning during inference
+%         \item Post-processing of generated spectrograms
+%     \end{itemize}
+% \end{enumerate}
+
+% \subsection{Evaluation Metrics}
+% The model's performance is evaluated using several metrics:
+
+% \begin{itemize}
+%     \item \textbf{Reconstruction Quality}:
+%     \begin{itemize}
+%         \item Mean Squared Error (MSE)
+%         \item Perceptual loss using VGGish features
+%         \item KL divergence in latent space
+%     \end{itemize}
+    
+%     \item \textbf{Style Transfer Quality}:
+%     \begin{itemize}
+%         \item Style loss between target and generated spectrograms
+%         \item Content preservation metrics
+%         \item Qualitative evaluation through audio samples
+%     \end{itemize}
+    
+%     \item \textbf{Computational Efficiency}:
+%     \begin{itemize}
+%         \item Training time per epoch
+%         \item Inference time for style transfer
+%         \item Memory usage during training and inference
+%     \end{itemize}
+% \end{itemize}
+
+% The implementation includes various optimizations and best practices:
+% \begin{itemize}
+%     \item Efficient data loading and preprocessing
+%     \item Gradient checkpointing for memory efficiency
+%     \item Mixed precision training
+%     \item Distributed training support
+%     \item Comprehensive logging and visualization
+% \end{itemize} 

@@ -2,6 +2,27 @@
 
 This directory contains the LaTeX source files for the project report on musical style transfer using latent diffusion models.
 
+
+## Work
+
+Needed figures:
+
+- loss functions for the autoencoder and style and compression
+- reconstructed specgorams just from the encoeder-decoder
+- ddim generated specgorams (plot with timesteps)
+- 
+
+Andrei
+
+- [ ] architecture
+- [ ] experiments
+
+Theo
+
+- [ ] data preprocesing
+- [ ] motivation
+
+
 ## Project Structure
 
 ```
@@ -69,14 +90,3 @@ If you encounter any issues:
 3. Ensure all source files are in the correct directory
 4. Verify that the bibliography file is properly formatted
 
-## Contributing
-
-To modify the report:
-
-1. Edit the relevant .tex files
-2. Update references in references.bib if needed
-3. Rebuild the document using the build commands above
-
-## License
-
-This report is part of the musical style transfer project and follows the same licensing terms as the main project. 

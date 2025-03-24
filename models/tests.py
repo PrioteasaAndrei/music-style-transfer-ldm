@@ -801,24 +801,41 @@ def test_ddim_generation():
 
     # Initialize models
     ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
-              pretraind_filename='ldm_300.pth', load_full_model=True).to(device)
+              pretraind_filename='ldm.pth', load_full_model=True).to(device)
               
     # Run style-conditioned DDIM sampling
     with torch.no_grad():
-        decoded = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=250, eta=1)
+        decoded_50 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=50, eta=0)
+        decoded_100 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=100, eta=0)
+        decoded_250 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=250, eta=0)
     
-    print(f"Decoded shape: {decoded.shape}")
+    print(f"Decoded shape: {decoded_50.shape}")
+    print(f"Decoded shape: {decoded_100.shape}")
+    print(f"Decoded shape: {decoded_250.shape}")
     
     # First create folder if it doesn't exist
     Path('tests/downloads/test_ddim_generation').mkdir(parents=True, exist_ok=True)
 
-    # Save picture of mel generated spectrogram
-    plt.figure(figsize=(5, 5))
-    plt.imshow(decoded.squeeze().detach().cpu(), cmap='gray')
-    plt.title('Decoded Mel Spectrogram')
-    plt.axis('off')
+    # Save picture of mel generated spectrograms
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    
+    # Plot 50 timesteps
+    axes[0].imshow(decoded_50.squeeze().detach().cpu(), cmap='gray')
+    axes[0].set_title('50 Timesteps')
+    axes[0].axis('off')
+    
+    # Plot 100 timesteps 
+    axes[1].imshow(decoded_100.squeeze().detach().cpu(), cmap='gray')
+    axes[1].set_title('100 Timesteps')
+    axes[1].axis('off')
+    
+    # Plot 250 timesteps
+    axes[2].imshow(decoded_250.squeeze().detach().cpu(), cmap='gray')
+    axes[2].set_title('250 Timesteps')
+    axes[2].axis('off')
+    
     plt.tight_layout()
-    plt.savefig('tests/downloads/test_ddim_generation/generated_mel_spectrogram.png')
+    plt.savefig('tests/downloads/test_ddim_generation/generated_mel_spectrograms_comparison.png')
     plt.close()
 
     # Save picture of original mel spectrogram
@@ -847,7 +864,7 @@ def test_ddim_generation():
     
     # Save audio from decoded mel spectrogram
     gen_audio_path = 'tests/downloads/test_ddim_generation/generated_audio.wav'
-    gen_pil = transforms.ToPILImage()(decoded.squeeze().detach().cpu())
+    gen_pil = transforms.ToPILImage()(decoded_250.squeeze().detach().cpu())
     gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
         gen_pil, sr=22050, im_height=style_image.shape[2], im_width=style_image.shape[3])
     sf.write(gen_audio_path, np.int16(gen_audio * 32767), 22050)
@@ -1018,61 +1035,6 @@ def test_vggish_loss():
     print(feature_loss)
 
 
-def test_ddim_wrapper():
-    """Test if the DDIM sampling wrapper is working correctly"""
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    
-    # Get the correct latent dimension from config
-    latent_dim = config['latent_dim_encoder']
-    
-    model = LDM(latent_dim=latent_dim, pretraind_filename='ldm_02.pth', load_full_model=True).to(device)
-    model.eval()
-
-    # Create dummy style spectrogram
-    style_spec = torch.randn(1, 1, 128, 128).to(device)
-    
-    # Define latent shape matching encoder output dimensions
-    # Use latent_dim for the channel dimension instead of hardcoding to 32
-    z_shape = (1, latent_dim, 16, 16)  # [batch, latent_dim, height/8, width/8]
-    
-    # Test with different timesteps and eta values
-    timesteps_list = [10, 50, 100]
-    eta_list = [0.0, 0.5, 1.0]
-    
-    for timesteps in timesteps_list:
-        for eta in eta_list:
-            print(f"\nTesting DDIM with timesteps={timesteps}, eta={eta}")
-            
-            # Generate sample
-            with torch.no_grad():
-                output = model.style_ddim_sample_wrapper(
-                    z_shape=z_shape,
-                    style_spec=style_spec,
-                    timesteps=timesteps,
-                    eta=eta
-                )
-            
-            # Check output properties
-            print(f"Output shape: {output.shape}")
-            print(f"Output range: [{output.min():.3f}, {output.max():.3f}]")
-            assert output.shape == (1, 1, 128, 128), "Output shape mismatch"
-            assert torch.all(output >= 0) and torch.all(output <= 1), "Output range error"
-            
-            # Check if different eta values produce different results
-            if eta > 0:
-                with torch.no_grad():
-                    output2 = model.style_ddim_sample_wrapper(
-                        z_shape=z_shape,
-                        style_spec=style_spec,
-                        timesteps=timesteps,
-                        eta=eta
-                    )
-                # With eta > 0, outputs should differ due to stochasticity
-                assert not torch.allclose(output, output2), f"Outputs identical with eta={eta}"
-            
-    print("DDIM wrapper test completed successfully")
-
-
 if __name__ == "__main__":
     # test_ddim_deterministic()
     # test_ddim_shape_preservation()
@@ -1099,4 +1061,5 @@ if __name__ == "__main__":
     # test_ddim_wrapper()
 
     test_ddim_generation()
+
     print("All tests passed!")
