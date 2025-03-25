@@ -171,32 +171,26 @@ class LDMTrainer:
 
         t = torch.randint(0, self.model.num_timesteps, (batch_size,), device=self.device)
         
-        # Forward pass through model
-        outputs = self.model(content_spec, style_spec, t)
+        # Use gradient scaling
+        with torch.cuda.amp.autocast():
+            outputs = self.model(content_spec, style_spec, t)
+            noise_pred = outputs['noise_pred']
+            noise = outputs['noise']
+            z_0 = outputs['z_0']
+            reconstructed = outputs['reconstructed']
+            z_t = outputs['z_t']
 
-        noise_pred = outputs['noise_pred']
-        noise = outputs['noise']
-        z_0 = outputs['z_0']
-        reconstructed = outputs['reconstructed']
-        z_t = outputs['z_t']
-
-        denoisinsg_loss = diffusion_loss(noise_pred, noise)
-        compression_loss_ = compression_loss(content_spec, reconstructed, z_0, self.model.feature_loss_net)
-        style_loss_ = style_loss(reconstructed, style_spec, self.model.feature_loss_net)
+            denoisinsg_loss = diffusion_loss(noise_pred, noise)
+            compression_loss_ = compression_loss(content_spec, reconstructed, z_0, self.model.feature_loss_net)
+            style_loss_ = style_loss(reconstructed, style_spec, self.model.feature_loss_net)
+            
+            total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
         
-        total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
-        
-        # Backward pass
-        total_loss.backward()
-         # Add gradient norm logging for style encoder
-        total_norm = 0
-        for p in self.model.style_encoder.parameters():
-            if p.grad is not None:
-                param_norm = p.grad.data.norm(2)
-                total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
-        print(f"Style encoder gradient norm: {total_norm}")
-        self.optimizer.step()
+        # Scale gradients
+        scaler = torch.cuda.amp.GradScaler()
+        scaler.scale(total_loss).backward()
+        scaler.step(self.optimizer)
+        scaler.update()
         
         return {
             'compression_loss': compression_loss_.item(),
