@@ -13,6 +13,7 @@ config = {
     'processed_spectograms_dataset_folderpath': 'processed_images',
     'pairing_file_path': 'spectrogram_pair_dataset_pairings.csv',
     'unet_num_filters': 64,
-    'forward_diffusion_num_timesteps': 1000,
-    'compression_feature_extractor': 'vggish',
+    'forward_diffusion_num_timesteps': 200,
+    'compression_feature_extractor': 'lpips',
+    'training_iteration_noise': 250,
 }
