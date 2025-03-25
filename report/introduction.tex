@@ -1,30 +1,57 @@
 \section{Introduction}
 
 \subsection{Background}
-Music style transfer is a challenging task in the field of audio processing and machine learning. The goal is to transform a piece of music from one style to another while preserving its content and musical structure. Traditional approaches to style transfer have often relied on rule-based systems or simple signal processing techniques, which have limited capabilities in capturing complex musical styles and maintaining musical coherence.
+Music style transfer involves altering the style of a musical piece, 
+such as changing the instrument its played with, 
+while preserving original characteristics like melody or rhythm.
+This could be done by relying on rule-based systems, 
+by e\.g\. modifying the instruments in an MIDI file inside a music production software, 
+or by leveraging machine learning techniques for symbolic music genre transfer, like Brunner et al\. with MIDI-VAE or CycleGAN~\cite{Brunner2018MIDIVAEMD, Brunner2018SymbolicMG}.
+However these approaches are limited to leveraging midi files with the latter also requiring an exceptional amount of compute to train.
 
-Recent advances in deep learning, particularly in the field of generative models, have opened new possibilities for music style transfer. Latent Diffusion Models (LDMs) have shown remarkable success in image generation and style transfer tasks, offering a promising approach for music processing. By operating in a compressed latent space, LDMs can efficiently capture and manipulate high-level features while maintaining computational efficiency.
 
-\subsection{Problem Statement}
-The main challenges in music style transfer include:
+However capturing the essence of a musical piece and transferring it to another one can involve much more than just 
+changing what instrument is used to play the notes, if even applicable.
+
+Recent advancements in machine learning have introduced approaches that work very well for the same corresponding task in 
+the image domain. Notably, Latent Diffusion Models (LDMs) have demonstrated remarkable success 
+in more efficiently generating high-quality images~\cite{rombach2022high}, and these models can be adapted to effectively transfer styles.
+% write some more sentences about ldms (whats the OG paper, we should cite it here)
+
+The principles of LDMs can be extended to music by representing audio data as spectrograms, 
+visual representations of the frequencies in a sound signal over time.
+This approach potentially allows for application of image-based generation and style transfer techniques to audio data.
+The paper `Music Style Transfer With Diffusion Model'~\cite{huang2024music} presents exactly this approach. 
+Proposing a framework that utilizes diffusion models for music style transfer.
+% two more detailed sentences over the paper
+
+In this project, we want to implement a version of the approach proposed in the paper.
+However, since their code is not publicly available, we will develop our own implementation and hope to achieve similar results.
+
+\subsection{Problem Statement \& Project Goals \& Challenges}
+The goal of this project is to implement a music style transfer architecture based on the principles of Latent Diffusion Models (LDMs).
+We should be able to take a music sample and change its instrument while preserving its other characteristics.
+This involves several challenges, including:
+
 \begin{itemize}
-    \item Preserving the musical content while changing the style
-    \item Maintaining temporal coherence and musical structure
-    \item Handling the high-dimensional nature of audio data
-    \item Ensuring real-time processing capabilities
-    \item Achieving high-quality results with limited computational resources
+    \item \textbf{Dataset:} Creating a suitable dataset for training the model. 
+      The dataset should contain music samples with different instruments. Having enough samples of each instrument is also important to 
+      model has enough data to learn from. This is important to ensure that the model can learn to transfer styles effectively. 
+      Since we are very constrained in terms of computing resources, we restrict ourselves to only a few instruments and small samples.
+
+    \item \textbf{Model Architecture:} Designing the model architecture. 
+      We will be implementing a Latent Diffusion Model (LDM) as proposed in the paper.
+      Implementing an LDM as it would be traditionally done for images and also incorporating the ideas from the paper to adapt it to music.
+      % Add some specifics?
+
+    \item \textbf{Hardware Limitations:}
+      Since we only have access to our laptops and a single 3060ti GPU, we are very limited in terms of computing resources.
+      Because of that we have to be very careful to not introduce too many parameters to the model in order to train it for enough epochs.
+      
+    \item \textbf{Quality of Generated Samples:}
+      We want to generate music samples that still sound okay and let us hear the characteristics behind the song and instruments.
+      We plan to do most of the evacuation concerning the quality of the generated samples by just listening to them.
+      However since we are very restricted in terms of computing resources, we are totally fine with not archiving the highest quality.
+      If we can generate samples that sound okay and are able to transfer the style of the music, this is already a success and validate our approach
+      With more data, larger models and more training, someone with more resources could then probably achieve better results.
 \end{itemize}
-
-Traditional methods often struggle with these challenges, particularly in maintaining musical coherence and handling complex style transformations. The need for a more robust and efficient approach has led to the exploration of latent diffusion models for this task.
-
-\subsection{Project Goals}
-This project aims to:
-\begin{itemize}
-    \item Implement a novel approach to music style transfer using latent diffusion models
-    \item Develop an efficient architecture that can process spectrograms in real-time
-    \item Create a system that can transfer musical styles while preserving content
-    \item Evaluate the effectiveness of different loss functions and training strategies
-    \item Provide a practical solution that can run on consumer-grade hardware
-\end{itemize}
-
-The implementation focuses on spectrogram-based processing, which allows for efficient handling of audio data while maintaining the temporal and frequency characteristics of the music. By leveraging the power of latent diffusion models, we aim to achieve high-quality style transfer results while addressing the computational challenges associated with audio processing. 
