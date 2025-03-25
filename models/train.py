@@ -188,6 +188,14 @@ class LDMTrainer:
         
         # Backward pass
         total_loss.backward()
+         # Add gradient norm logging for style encoder
+        total_norm = 0
+        for p in self.model.style_encoder.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        print(f"Style encoder gradient norm: {total_norm}")
         self.optimizer.step()
         
         return {

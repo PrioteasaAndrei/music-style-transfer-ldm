@@ -345,6 +345,7 @@ class LDM(nn.Module):
 
             self.encoder.eval()
             self.decoder.train()
+            self.style_encoder.train()
           
         self.unet = UNet(in_channels=latent_dim, out_channels=latent_dim, num_filters=64)
         self.noise_scheduler = ForwardDiffusion(num_timesteps=num_timesteps)
