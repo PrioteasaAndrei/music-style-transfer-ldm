@@ -153,6 +153,42 @@ The reverse process then learns to gradually denoise the data by predicting the 
 
 \noindent where $\epsilon_\theta$ is our UNet model that predicts the noise. This formulation allows for stable training and high-quality generation.
 
+\subsubsection{DDIM Sampling}
+% \begin{equation}
+%     q(z_t|z_{t-1}) = \mathcal{N}(z_t; \sqrt{1-\beta_t}\,z_{t-1},\, \beta_t\mathbf{I}),
+% \end{equation}
+% and in closed form,
+% \begin{equation}
+%     q(z_t|z_0) = \mathcal{N}(z_t; \sqrt{\bar{\alpha}_t}\,z_0,\, (1-\bar{\alpha}_t)\mathbf{I}),
+% \end{equation}
+% with
+% \begin{equation}
+%     z_t = \sqrt{\bar{\alpha}_t}\,z_0 + \sqrt{1-\bar{\alpha}_t}\,\epsilon, \quad \epsilon \sim \mathcal{N}(0, \mathbf{I}).
+% \end{equation}
+Opposed to the forward diffusion process, which gradually adds Gaussian noise to the input data, in DDIM sampling, our goal is to reverse this process. 
+\\\\
+Given the noisy latent representation of our original image \( z_t \), 
+we use a trained UNet model \(\epsilon_\theta(z_t,t)\) to predict the noise in \( z_t \). 
+From this prediction, we first estimate the original latent variable \( z_0 \) by rearranging the forward process equation:
+\begin{equation}
+    z_0^{\text{pred}} = \frac{z_t - \sqrt{1-\bar{\alpha}_t}\,\epsilon_\theta(z_t,t)}{\sqrt{\bar{\alpha}_t}}.
+\end{equation}
+When we have a lot of noise, this is a pretty hard task for the model and therefore the \( z_0^{\text{pred}} \) will only be a rough estimate.
+Once we have this estimate, we add back a portion of the noise to reconstruct \( z_{t-1} \), the latent at the previous timestep.
+In other words, we again “mix” the estimated \( z_0 \) with a portion of the noise to obtain a less noisy latent \( z_{t-1} \).
+This update rule is given by:
+\begin{equation}
+    z_{t-1} = \sqrt{\bar{\alpha}_{t-1}}\,z_0^{\text{pred}} + \sqrt{1-\bar{\alpha}_{t-1}}\,\epsilon_\theta(z_t,t)
+\end{equation}
+where \(\sqrt{\bar{\alpha}_{t-1}}\,z_0^{\text{pred}}\) represents the estimated latent at the previous timestep, and \(\sqrt{1-\bar{\alpha}_{t-1}}\,\epsilon_\theta(z_t,t)\) the corresponding noise at that timestep.  
+\\[1ex]
+This process is repeated iteratively, moving from the final noisy latent \( z_T \) down to \( z_0 \).
+\\\\
+In summary, while the forward process gradually introduces noise, the reverse DDIM update gradually removes it step by step. 
+A good side effect of this approach is that each individual prediction by our model (if we only want to get new samples) does not need to be perfect.
+Because as the noise level decreases in later stages, the task becomes easier, one can still generate good samples even if the model is not perfect at every step.
+
+
 \subsubsection{Sinusoidal Position Embeddings}
 
 The diffusion process requires knowledge of the timestep $t$ to properly denoise the data. However, neural networks work best with continuous representations rather than discrete timestep indices. Therefore, we use sinusoidal position embeddings to encode the timestep information in a way that the network can effectively utilize.
@@ -232,6 +268,3 @@ L_{diffusion}(\epsilon_\theta, \epsilon, t) = \frac{1}{n}\sum_{i=1}^{n}(\epsilon
     L_{style}(x, \hat{x}, z) = 
     \frac{1}{L}\sum_{l=1}^{L} MSE(\phi_l(x), \phi_l(\hat{x}))
 \end{equation}
-
-
-
