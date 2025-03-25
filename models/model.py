@@ -463,3 +463,96 @@ class LDM(nn.Module):
         
         return x, sampling_logs
 
+
+    def content_style_transfer_wrapper(self, content_spec, style_spec, num_timesteps=250, eta=0.0):
+         """
+         Wrapper function to perform content and style-conditioned DDIM sampling
+         
+         Args:
+             content_spec: Content spectrogram to provide structure
+             style_spec: Style spectrogram to condition on
+             num_timesteps: Number of timesteps for both noising and denoising (default: 250)
+             eta: Controls stochasticity (0 = deterministic DDIM, 1 = DDPM)
+         """
+         content_spec = content_spec.float()
+         style_spec = style_spec.float()
+         
+         # Get content in latent space
+         z_0 = self.encoder(content_spec)
+         
+         # Add noise to content latent using specified num_timesteps
+         # Calculate what timestep t corresponds to desired noise level
+         t = torch.full((content_spec.shape[0],), num_timesteps-1, dtype=torch.long, device=content_spec.device)
+         z_t, noise = self.noise_scheduler(z_0, t)
+         
+         # Get style embedding
+         style_embedding = self.style_encoder(style_spec)
+         
+         # Run DDIM sampling starting from noised content using same num_timesteps
+         sampled, _ = self.content_style_ddim_sample(z_t, style_embedding, num_timesteps, eta)
+         
+         # Decode the sampled latent
+         decoded = self.decoder(sampled)
+         # Normalize to [0,1] range
+         decoded = (decoded + 1) / 2
+         
+         return decoded
+
+    def content_style_ddim_sample(self, z_t, style_embedding, timesteps=250, eta=0.0):
+        """
+        Content and style-conditioned DDIM sampling using the model's noise scheduler and UNet
+        
+        Args:
+            z_t: Starting noise (noised content) [B, C, H, W]
+            style_embedding: Style information for conditioning
+            timesteps: Number of denoising steps
+            eta: Controls stochasticity (0 = deterministic DDIM, 1 = DDPM)
+        """
+        # Select timesteps evenly spaced from num_timesteps-1 to 0
+        times = torch.linspace(timesteps-1, 0, timesteps).long().to(z_t.device)
+        
+        x = z_t  # Start with noised content
+        
+        # Store intermediate predictions for visualization
+        sampling_logs = {
+            'timesteps': [],
+            'pred_x0': [],
+            'noise_pred': []
+        }
+        
+        for i in range(len(times)-1):
+            t = times[i]
+            t_next = times[i+1]
+            
+            # Add batch dimension to timestep t
+            t = t.repeat(z_t.shape[0])
+            
+            # 1. Predict noise at current timestep
+            noise_pred = self.unet(x, t, style_embedding)
+            
+            # 2. Get alpha values for current and next timestep
+            alpha_bar_t = self.noise_scheduler.alpha_bar_t[t].view(-1, 1, 1, 1)
+            alpha_bar_next = self.noise_scheduler.alpha_bar_t[t_next].view(-1, 1, 1, 1)
+            
+            # 3. Predict x_0 (clean image)
+            x_0_pred = self.noise_scheduler.predict_start_from_noise(x, t, noise_pred)
+            
+            # 4. Get direction pointing to x_t
+            direction_xt = torch.sqrt(1 - alpha_bar_t) * noise_pred
+            
+            # 5. Get direction pointing to x_t_next
+            direction_xt_next = torch.sqrt(1 - alpha_bar_next) * noise_pred
+            
+            # 6. Interpolate between directions based on eta
+            noise_contribution = eta * (direction_xt_next - direction_xt)
+            
+            # 7. Compute next x
+            x = torch.sqrt(alpha_bar_next) * x_0_pred + direction_xt_next + noise_contribution
+            
+            # Store intermediate predictions
+            sampling_logs['timesteps'].append(t.item())
+            sampling_logs['pred_x0'].append(x_0_pred.detach().clone())
+            sampling_logs['noise_pred'].append(noise_pred.detach().clone())
+        
+        return x, sampling_logs
+
