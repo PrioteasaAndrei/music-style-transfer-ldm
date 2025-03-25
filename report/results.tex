@@ -103,13 +103,14 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 
 \textcolor{red}{say somewhere about that we could have used label information in the style loss somehow maybe like in clip but it was too complicated to implement}
 
-\subsection{Style Transfer Examples}
+\subsection{Style Generation Example}
+Now to testing the full pipeline.
 When running the full pipeline with our trained LDM model, style-embeddings from the pretrained VGGish model to condition, and generate 
-style-infused spectrograms using the ddim-sampling. Results are shown in Figure~\ref{fig:style_transfer_results}. 
+style-infused spectrograms using the ddim-sampling. Results are shown in Figure~\ref{fig:style_generation_results}. 
 The resulting spectrograms show our models inability to actually generate and transfer the style characteristics in its current state.
 Increasing the number of sampling timesteps in the ddim-sampling further, did not yield any improvements.
 Also while testing multiple different input images and random seeds, the resulting spectrograms changed drastically, 
-however the quality of them remained comparable to the ones in Figure~\ref{fig:style_transfer_results}.
+however the quality of them remained comparable to the ones in Figure~\ref{fig:style_generation_results}.
 When passing the generated spectrograms through the decoder (which was also trained in pair with the LDM), 
 the resulting audio did have near to no meaningful content or structure and sounded very unnatural and noise-like.
 Representing near to no musical content. This however would be expected from the generated spectrograms.
@@ -123,9 +124,9 @@ architecture, training, and sampling  process could yield better results. They h
 \begin{figure}[h]
     \centering
     \includegraphics[width=\textwidth]{figures/test_ddimgen_ldm300epochs_generated_mel_spectrograms_comparison.png}
-    \caption{Style transfer results. The figure displays different number of timesteps used in the ddim sampling process. 
+    \caption{Style generation results. The figure displays different number of timesteps used in the ddim sampling process. 
     The LDM model was trained for 300 epochs.}
-    \label{fig:style_transfer_results}
+    \label{fig:style_generation_results}
 \end{figure}
 
 
