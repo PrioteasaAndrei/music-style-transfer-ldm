@@ -104,42 +104,31 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 \textcolor{red}{say somewhere about that we could have used label information in the style loss somehow maybe like in clip but it was too complicated to implement}
 
 \subsection{Style Transfer Examples}
-The model successfully transfers various musical styles:
+Now to testing the full pipeline.
+When running the full pipeline with our trained LDM model, style-embeddings from the pretrained VGGish model to condition, and generate 
+style-infused spectrograms using the ddim-sampling. Results are shown in Figure~\ref{fig:style_transfer_results}. 
+The resulting spectrograms show our models inability to actually generate and transfer the style characteristics in its current state.
+Increasing the number of sampling timesteps in the ddim-sampling further, did not yield any improvements.
+Also while testing multiple different input images and random seeds, the resulting spectrograms changed drastically, 
+however the quality of them remained comparable to the ones in Figure~\ref{fig:style_transfer_results}.
+When passing the generated spectrograms through the decoder (which was also trained in pair with the LDM), 
+the resulting audio did have near to no meaningful content or structure and sounded very unnatural and noise-like.
+Representing near to no musical content. This however would be expected from the generated spectrograms.
+\\\\
+The generated spectrograms however, already seem to follow some meaningful structure, indicating that further refinement or fixes in our 
+architecture, training, and sampling  process could yield better results. They however seem overly sharp and noisy.
+% \\\\
+% TODO: Add this?
+% While we would have liked to do a more thorough analysis of the generated spectrograms, with these bad results there is not really much to analyze further.
 
-\begin{itemize}
-    \item \textbf{Instrument Transfer}:
-    \begin{itemize}
-        \item Piano to Guitar
-        \item Violin to Cello
-        \item Flute to Clarinet
-    \end{itemize}
-    
-    \item \textbf{Style Characteristics}:
-    \begin{itemize}
-        \item Preserves musical content and structure
-        \item Captures timbral characteristics of target instruments
-        \item Maintains temporal coherence
-    \end{itemize}
-\end{itemize}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/test_ddimgen_ldm300epochs_generated_mel_spectrograms_comparison.png}
+    \caption{Style transfer results. The figure displays different number of timesteps used in the ddim sampling process. 
+    The LDM model was trained for 300 epochs.}
+    \label{fig:style_transfer_results}
+\end{figure}
 
-\subsection{Qualitative Analysis}
-Visual analysis of the spectrograms reveals:
-
-\begin{itemize}
-    \item \textbf{Content Preservation}:
-    \begin{itemize}
-        \item Maintains note patterns and rhythm
-        \item Preserves harmonic structure
-        \item Keeps temporal alignment
-    \end{itemize}
-    
-    \item \textbf{Style Transfer Quality}:
-    \begin{itemize}
-        \item Clear timbral changes
-        \item Appropriate frequency distribution
-        \item Natural-sounding transitions
-    \end{itemize}
-\end{itemize}
 
 \subsection{Quantitative Analysis}
 The model's performance is evaluated using various metrics:
