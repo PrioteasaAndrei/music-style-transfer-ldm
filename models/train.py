@@ -154,7 +154,7 @@ class LDMTrainer:
         # Initialize optimizer (only for trainable parameters)
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         self.optimizer = torch.optim.Adam(trainable_params, lr=lr)
-        
+        self.scaler = torch.amp.GradScaler('cuda')
         # Learning rate scheduler
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5, patience=10,
@@ -171,8 +171,7 @@ class LDMTrainer:
 
         t = torch.randint(0, self.model.num_timesteps, (batch_size,), device=self.device)
         
-        # Use gradient scaling
-        with torch.cuda.amp.autocast():
+        with torch.autocast(device_type=self.device.type):
             outputs = self.model(content_spec, style_spec, t)
             noise_pred = outputs['noise_pred']
             noise = outputs['noise']
@@ -185,12 +184,21 @@ class LDMTrainer:
             style_loss_ = style_loss(reconstructed, style_spec, self.model.feature_loss_net)
             
             total_loss = compression_loss_ + denoisinsg_loss + self.style_loss_weight * style_loss_
-        
-        # Scale gradients
-        scaler = torch.cuda.amp.GradScaler()
-        scaler.scale(total_loss).backward()
-        scaler.step(self.optimizer)
-        scaler.update()
+            
+
+        self.scaler.scale(total_loss).backward()
+
+        # # Add gradient norm logging for style encoder
+        # total_norm = 0
+        # for p in self.model.style_encoder.parameters():
+        #     if p.grad is not None:
+        #         param_norm = p.grad.data.norm(2)
+        #         total_norm += param_norm.item() ** 2
+        # total_norm = total_norm ** 0.5
+        # print(f"Style encoder gradient norm: {total_norm}")
+
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
         
         return {
             'compression_loss': compression_loss_.item(),
@@ -219,15 +227,15 @@ class LDMTrainer:
                 style_spec = style_spec.to(self.device)
                 
                 # Training step
-                for i in range(config['training_iteration_noise']):
-                    losses = self.train_step(content_spec, style_spec)
-                
-                    # Update progress bar
-                    total_loss += losses['total_loss']
-                    total_compression_loss += losses['compression_loss']
-                    total_denoisinsg_loss += losses['denoisinsg_loss']
-                    total_style_loss += losses['style_loss']
-                    pbar.set_postfix({'loss': losses['total_loss']})
+                # for _ in range(config['training_iteration_noise']):
+                losses = self.train_step(content_spec, style_spec)
+            
+                # Update progress bar
+                total_loss += losses['total_loss']
+                total_compression_loss += losses['compression_loss']
+                total_denoisinsg_loss += losses['denoisinsg_loss']
+                total_style_loss += losses['style_loss']
+                pbar.set_postfix({'loss': losses['total_loss']})
         
         avg_loss = total_loss / num_batches * config['training_iteration_noise']
         avg_compression_loss = total_compression_loss / num_batches * config['training_iteration_noise']

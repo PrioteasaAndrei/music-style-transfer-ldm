@@ -4,7 +4,7 @@ config = {
     'learning_rate_factor': 0.5,
     'learning_rate_patience': 5,
     'learning_rate_min': 1e-6,
-    'num_epochs': 302,
+    'num_epochs': 202,
     # 'batch_size': 256,
     'batch_size': 128,
     'style_loss_weight': 3.0,
@@ -15,5 +15,5 @@ config = {
     'unet_num_filters': 64,
     'forward_diffusion_num_timesteps': 200,
     'compression_feature_extractor': 'lpips',
-    'training_iteration_noise': 250,
+    'training_iteration_noise': 50,
 }
