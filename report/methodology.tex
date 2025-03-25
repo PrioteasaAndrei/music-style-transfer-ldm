@@ -165,6 +165,8 @@ The reverse process then learns to gradually denoise the data by predicting the 
 % \begin{equation}
 %     z_t = \sqrt{\bar{\alpha}_t}\,z_0 + \sqrt{1-\bar{\alpha}_t}\,\epsilon, \quad \epsilon \sim \mathcal{N}(0, \mathbf{I}).
 % \end{equation}
+
+This process was originally introduced by Song et al.~\cite{song2021denoising}. 
 Opposed to the forward diffusion process, which gradually adds Gaussian noise to the input data, in DDIM sampling, our goal is to reverse this process. 
 \\\\
 Given the noisy latent representation of our original image \( z_t \), 
