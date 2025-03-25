@@ -105,21 +105,21 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 
 \subsection{Style Generation Example}
 Now to testing the full pipeline.
-When running the full pipeline with our trained LDM model, style-embeddings from the pretrained VGGish model to condition, and generate 
-style-infused spectrograms using the ddim-sampling. Results are shown in Figure~\ref{fig:style_generation_results}. 
+For the generation of the style-infused spectrograms, we utilize the ddim-sampling method as described in~\ref{sec:ddim_sampling}.
+For generation only we do not use an content-spectrogram but instead a random noise tensor and style-embeddings from another spectrogram as starting point for the sampling process.
+We then feed the generated spectrograms through the decoder to obtain the spectrograms and in addition reverse our preprocessing steps with librosa to get the final audio output.
+
+Results are shown in Figure~\ref{fig:style_generation_results}.
 The resulting spectrograms show our models inability to actually generate and transfer the style characteristics in its current state.
 Increasing the number of sampling timesteps in the ddim-sampling further, did not yield any improvements.
 Also while testing multiple different input images and random seeds, the resulting spectrograms changed drastically, 
 however the quality of them remained comparable to the ones in Figure~\ref{fig:style_generation_results}.
-When passing the generated spectrograms through the decoder (which was also trained in pair with the LDM), 
-the resulting audio did have near to no meaningful content or structure and sounded very unnatural and noise-like.
-Representing near to no musical content. This however would be expected from the generated spectrograms.
+
+When listening to the resulting audio, it did have near to no meaningful content or structure and sounded very unnatural and noise-like.
+Representing near to no musical content. This however would be expected from the generated spectrograms in this state.
 \\\\
 The generated spectrograms however, already seem to follow some meaningful structure, indicating that further refinement or fixes in our 
 architecture, training, and sampling  process could yield better results. They however seem overly sharp and noisy.
-% \\\\
-% TODO: Add this?
-% While we would have liked to do a more thorough analysis of the generated spectrograms, with these bad results there is not really much to analyze further.
 
 \begin{figure}[h]
     \centering
@@ -128,6 +128,24 @@ architecture, training, and sampling  process could yield better results. They h
     The LDM model was trained for 300 epochs.}
     \label{fig:style_generation_results}
 \end{figure}
+
+\subsection{Style Transfer Example}
+Next, we also tested the style transfer capabilities of our model. Hoping that maybe some of the lacking generation capabilities
+come from the fact that we are not using a content spectrogram as input but only random noise.
+
+We used the same sampling process as before, but this time we used a content spectrogram as input and a style spectrogram as conditioning.
+Results are shown in Figure~\ref{fig:style_transfer_results}.
+\textcolor{red}{TODO: Add figure} 
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/test_ddimtransfer_ldm300epochs_generated_mel_spectrograms_comparison.png}
+%     \caption{Style transfer results. The figure displays different number of timesteps used in the style transfer process with ddim-sampling. 
+%     The LDM model was trained for 300 epochs.}
+%     \label{fig:style_transfer_results}
+% \end{figure}
+
+Again, the resulting spectrograms, and the converted audio, follow the same problems as the generated spectrograms.
 
 
 \subsection{Quantitative Analysis}

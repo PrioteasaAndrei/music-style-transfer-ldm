@@ -154,6 +154,7 @@ The reverse process then learns to gradually denoise the data by predicting the 
 \noindent where $\epsilon_\theta$ is our UNet model that predicts the noise. This formulation allows for stable training and high-quality generation.
 
 \subsubsection{DDIM Sampling}
+\label{sec:ddim_sampling}
 % \begin{equation}
 %     q(z_t|z_{t-1}) = \mathcal{N}(z_t; \sqrt{1-\beta_t}\,z_{t-1},\, \beta_t\mathbf{I}),
 % \end{equation}
