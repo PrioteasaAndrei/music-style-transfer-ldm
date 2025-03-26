@@ -133,7 +133,9 @@ architecture, training, and sampling  process could yield better results. They h
 Next, we also tested the style transfer capabilities of our model. Hoping that maybe some of the lacking generation capabilities
 come from the fact that we are not using a content spectrogram as input but only random noise.
 
-We used the same sampling process as before, but this time we used a content spectrogram as input and a style spectrogram as conditioning.
+Because of the before mentioned issues, we tried to refine our sampling process, however this did not yield any real improvements. 
+However the shown results in Figure~\ref{fig:style_transfer_results} are generated with an slightly modified sampling process compared to the one in the generation example.
+This time we instead of using random noise as initial \(z_t\), we used a content spectrogram as input and a style spectrogram as conditioning.
 Results are shown in Figure~\ref{fig:style_transfer_results}.
 \textcolor{red}{TODO: Add figure} 
 
