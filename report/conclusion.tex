@@ -1,7 +1,7 @@
 \section{Conclusion}
 
 \subsection{Achievements}
-
+\textit{Andrei P.}\\
 We remind the reader that we defined our goals for this project as follows:
 \begin{itemize}
     \item \textbf{To implement a method for musical style transfer and conditional generation using latent diffusion models.}: In this regard our results demonstrate the potential of LDMs for audio style transfer and provide a foundation for future research. While there are limitations, and that is mainly due to the complex training and computational requirements, we believe the existing unmodified code based would provide better results with significantly more training (we estimate that around 60 GPU hours of A100 would meet the requirement).
@@ -15,13 +15,13 @@ We remind the reader that we defined our goals for this project as follows:
 \noindent We tackled a new problem with little available resources, which combines both audio and image processing. We were thus able to expand our knowledge in both fields which we consider a success of this project. While there are limitations and areas for improvement, the results demonstrate the potential of LDMs for audio style transfer and provide a foundation for future research in this direction. 
 
 \subsection{Future Work}
-
+\textit{Andrei P.}\\
 Given more resources, we would like to explore the following directions:
 \begin{itemize}
     \item \textbf{Increase the number of parameters and training time}: The current model is relatively small, having only 12M parameters. We wish to try a bigger model, but that would require even more training time.
-    \item \textbf{Augument the dataset}: At this point a random noise level is generated per each sample of the dataset, hoping that our model will learn to denoise at all noise levels. We considered augumenting the dataset, by training the model for each sample at multiple noise levels, but this increased the training effort substantially (by a factor of 100). This was not feasible given our previous resources.
+    \item \textbf{Augment the dataset}: At this point a random noise level is generated per each sample of the dataset, hoping that our model will learn to denoise at all noise levels. We considered augmenting the dataset, by training the model for each sample at multiple noise levels, but this increased the training effort substantially (by a factor of 100). This was not feasible given our previous resources.
     \item \textbf{Different style loss}: We would research for different style loss functions, and try to find pretrained models that work better on spectrograms.
     \item \textbf{Changes to noise scheduler and embedding}: We would experiment with a different noise scheduler and embedding mechanism to see if it improves results.
-    \item \textbf{Embed labels into the loss}: Since we have information about the instrument being played, we could perhaps embed this into the loss calculation, in the same way they do in CLIPs\footnote{Learning Transferable Visual Models From Natural Language Supervision~\cite{radford2021learning}}). This could increase the capability of the model of style transfer.
+    \item \textbf{Embed labels into the loss}: Since we have information about the instrument being played, we could perhaps embed this into the loss calculation, in the same way they do in CLIPs\footnote{Learning Transferable Visual Models From Natural Language Supervision~\cite{radford2021learning}}. This could increase the capability of the model of style transfer.
 \end{itemize}
 

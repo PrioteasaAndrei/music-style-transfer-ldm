@@ -1,9 +1,9 @@
 \section{Experiments and Results}
-
+\textit{Andrei P.}\\
 In this section we will go in detail over the experiments we have conducted to evaluate the performance of our model, implementation choices, problems we encountered and how we solved them. Given the limited training capacity of the available computing resources, most architectural decisions were made with a trade-off between model complexity and training time, which may have resulted in suboptimal performance and the reason why the model is not able to transfer the style.
 
-\subsection{Training environment}
-
+\subsection{Training Environment}
+\textit{Andrei P.}\\
 The training was conducted on a single NVIDIA GeForce RTX 3060 Ti GPU with 8GB of VRAM. We were bound by this limitation in choosing the model architecture and the hyperparameters, which may have directly resulted in the suboptimal performance of the model and lack of convergence, even if we worked on such a reduced dataset of 128x128 grayscale spectrograms.
 
 \vspace{1em}
@@ -21,13 +21,13 @@ python models/train.py --model ldm
 \noindent The hyperparameter configuration is available in the \texttt{config.py} file.
 
 
-\subsection{Spectogram resolution}
+\subsection{Spectrogram Resolution}
+\textit{Andrei P.}\\
+We experimented with different spectrogram resolutions, by manually inspecting the reconstructed audio. We decided on using 128 frequency ranges for the spectrograms, as it provided a good balance between quality and training time and limiting the temporal resolution to 3 seconds.
 
-We experimented with different spectogram resolutions, by manually inspecting the reconstructed audio. We decided on using 128 frequency ranges for the spectrograms, as it provided a good balance between quality and training time and limiting the temporal resolution to 3 seconds.
-
-\subsection{Pre-training the compression model}
-
-The compression model (encoder and decoder) are jointly pre-trained on the training set for 100 epochs using a learning rate of 0.5e-4 with an AdamW optimizer and ReduceLROnPlateau scheduler. The learning rate is reduced by a factor of 0.5 when the validation loss plateaus for 10 epochs, with a minimum learning rate of 1e-6. This adaptive learning rate strategy helps prevent overfitting and ensures stable convergence of the compression model training.
+\subsection{Pre-training the Compression Model}
+\textit{Andrei P.}\\
+The compression model (encoder and decoder) is jointly pre-trained on the training set for 100 epochs using a learning rate of 0.5e-4 with an AdamW optimizer and ReduceLROnPlateau scheduler. The learning rate is reduced by a factor of 0.5 when the validation loss plateaus for 10 epochs, with a minimum learning rate of 1e-6. This adaptive learning rate strategy helps prevent overfitting and ensures stable convergence of the compression model training.
 
 The pre-training phase focuses solely on reconstruction quality, optimizing the encoder-decoder architecture to effectively compress and reconstruct the input spectrograms while preserving essential musical features. This step is crucial as it establishes a strong foundation for the latent space that will later be used by the diffusion model for style transfer. We decide to regularize our latent space using a KL divergence loss, which helps to ensure that the latent space is normally distributed. Both the encoder and decoder are fully convolutional, allowing for dynamic input sizes.
 
@@ -42,9 +42,9 @@ We originally experimented with a latent space dimension of [32,8,8], which we f
 
 \noindent At this point we are able to reconstruct the input spectrograms with a high degree of accuracy, as shown in Figure \ref{fig:reconstruction}. We now freeze the weights of the encoder and leave only the decoder trainable during the ldm training phase.
 
-\subsection{Training the style transfer model}
-
-The style tranfer model is trained with similar hyperparameters (in term of learning rate and optimizer) as the pre-training phase and it is trained jointly with the diffusion model and the decoder. Since a simple MSE loss does not encourage the model to learn style characteristics, we decide on a pretrained feature extractor network and compute the loss as the MSE between the feature maps of the input and the target style spectrogram at different resolutions. Initially we opted for LPIPS loss, but since LPIPS is pretrained on ImageNet, we found out that it is not suitable for our task which deals with grayscale spectograms. We then decided to use the VGGish feature extractor, which is pretrained on the AudioSet dataset and is more suitable for our task. Unfortunately, even after this modification, we were not able to diagnose while our style loss is not improving.
+\subsection{Training the Style Transfer Model}
+\textit{Andrei P.}\\
+The style transfer model is trained with similar hyperparameters (in term of learning rate and optimizer) as the pre-training phase and it is trained jointly with the diffusion model and the decoder. Since a simple MSE loss does not encourage the model to learn style characteristics, we decide on a pretrained feature extractor network and compute the loss as the MSE between the feature maps of the input and the target style spectrogram at different resolutions. Initially we opted for LPIPS loss, but since LPIPS is pretrained on ImageNet, we found out that it is not suitable for our task which deals with grayscale spectrograms. We then decided to use the VGGish feature extractor, which is pretrained on the AudioSet dataset and is more suitable for our task. Unfortunately, even after this modification, we were not able to diagnose while our style loss is not improving.
 
 \begin{figure}[h]
     \centering
@@ -55,8 +55,8 @@ The style tranfer model is trained with similar hyperparameters (in term of lear
 
 \noindent Moreover, at this point we observe that the compression loss which now accounts only for the decoder, is not improving, which may indicate overtraining of the decoder or other issues.
 
-\subsection{Cross Attention conditioning}
-
+\subsection{Cross Attention Conditioning}
+\textit{Andrei P.}\\
 We apply the cross attention at 2x2 and 4x4 resolutions to inject style information into the latent space. For this, the default cross attention layer has to be rewritten in order to handle the shape of the style spectrogram.
 \begin{lstlisting}[basicstyle=\tiny]
 def forward(self, unet_features, style_embedding):
@@ -84,7 +84,7 @@ def forward(self, unet_features, style_embedding):
 \end{lstlisting}
 
 \subsection{Parameter Count Analysis}
-
+\textit{Theo S.}\\
 We analyze the parameter counts of different model components to understand the model complexity and computational requirements. Table \ref{tab:param_counts} shows the breakdown of parameters for each component of our final model. The limiting number of parameters was intentionally chosen given the limited training resources.
 
 \begin{table}[h]
@@ -111,6 +111,7 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 
 
 \subsection{LDM Forward Pass}
+\textit{Theo S.}\\
 First we look at the output of the forward pass of the LDM model.
 Figure~\ref{fig:ldm_forward_pass} visualizes the input spectrograms and the generated output spectrogram.
 
@@ -124,11 +125,11 @@ Figure~\ref{fig:ldm_forward_pass} visualizes the input spectrograms and the gene
     \label{fig:ldm_forward_pass}
 \end{figure}
 
-\noindent When comparing the decoded \(z_t\), the LDM generated output, and the content spectrogram, we observe that while the decoded \(z_t\) looks noisy, the LDM seems to be able to capture some level of structure. This is an indication that the LDM did learn some style and reconstruction characteristics. Both insuficient training and a problematic loss convergence for the style encoder make a conclusive assesment of the style transfer capabilities of the LDM difficult. To get the audio output of the generated output spectrogram, we then reverse our preprocessing steps with librosa to get from the generated output spectrogram to an audio output.
+\noindent When comparing the decoded \(z_t\), the LDM generated output, and the content spectrogram, we observe that while the decoded \(z_t\) looks noisy, the LDM seems to be able to capture some level of structure. This is an indication that the LDM did learn some style and reconstruction characteristics. Both insufficient training and a problematic loss convergence for the style encoder make a conclusive assessment of the style transfer capabilities of the LDM difficult. To get the audio output of the generated output spectrogram, we then reverse our preprocessing steps with librosa to get from the generated output spectrogram to an audio output.
 
 Listening to the resulting audio, we find that it does not have meaningful content and sounds very unnatural and noise-like with, if any, very slight rhythmic structure. Because the output looks still very unrefined and noisy this is expected.
 \\\\
-Next we look at what happens when generating without a content spectrogram as input but instead only random noise.
+Next, we look at what happens when generating without a content spectrogram as input but instead only random noise.
 Figure~\ref{fig:ldm_forward_pass_random} shows the results of this.
 \begin{figure}[h]
     \centering
@@ -141,6 +142,7 @@ The model is able to actually generate something with resemblance to a spectrogr
 As before the corresponding audio output sounds very unnatural and noise-like.
 
 \subsection{Style Generation Example with DDIM}
+\textit{Theo S.}\\
 For the generation of the style-infused spectrograms, we utilize the ddim-sampling method as described in~\ref{sec:ddim_sampling}.
 By using ddim-sampling, we hope to archive better and less noisy results compared to the plain forward pass of the LDM.
 
@@ -176,13 +178,13 @@ Representing near to no musical content. This however would be expected from the
 \end{figure}
 
 \subsection{Style Transfer Example with DDIM}
+\textit{Theo S.}\\
 Next, we also tested the style transfer capabilities of our model using the ddim-sampling method. Hoping that maybe some of the lacking generation capabilities
 come from the fact that we are not using a content spectrogram as input but only random noise.
 
 Results are shown in Figure~\ref{fig:style_transfer_results}.
 For this we again use a content spectrogram as input and a style spectrogram as conditioning.
 Results are shown in Figure~\ref{fig:style_transfer_results}.
-\textcolor{red}{TODO: Add figure} 
 
 \begin{figure}[h]
     \centering
@@ -203,15 +205,15 @@ very noisy and has very bad quality, it does already have some meaningful conten
 
 
 \subsection{Discussion and Analysis}
-
+\textit{Andrei P.}\\
 Since our architecture was specifically designed to allow for quick training (using only a single RTX 3060 Ti GPU) and further research shows that significantly larger training time is needed (the original authors use 3 RTX 3090s), we cannot conclude if the poor results in our reconstruction or style transfer are due to the restricted architecture of a mistake in the training process. In this section we will propose our interpretation of the results and discuss possible causes.
 
-\subsubsection{Diffusion restricitons}
+\subsubsection{Diffusion Restrictions}
+\textit{Theo S.}\\
+Our dataset consists of pairs of spectrograms, one for the content and one for the style. For each individual pair we generate a random noise threshold which will be passed to the forward diffusion model. Because of the limited training resources, we only sample a single noise threshold for each pair during training. Ideally, with enough data, all possible levels of noise (per spectrogram pair) should be encountered during training (both low levels as well as high levels) which would ensure that the model learns to denoise at any noise level. But because of the limited length of the dataset (only 15000 samples) there may be the case that only a small subset of possible noise thresholds (which may as well be too big) are used during the denoising process. This would be a possible cause for poor results during the DDIM generation. In order to address this issue, we augmented the dataset by generating multiple noise levels for each pair of spectrograms, but this increased the training time by a factor up to 100, which could not be tested.
 
-Our dataset consists of pairs of spectrograms, one for the content and one for the style. For each inidivudal pair we generate a random noise threshold which will be passed to the forward difusion model. Because of the limited training resources, we only sample a single noise threshold for each pair during training. Ideally, with enough data, all possible levels of noise (per spectogram pair) should be encountered during training (both low levels as well as high levels) which would ensure that the model learns to denoise at any noise level. But because of the limited length of the dataset (only 15000 samples) there may be the case that only a small subset of possible noise thresholds (which may as well be too big) are used during the denoising process. This would be a possible cause for poor results during the DDIM generation. In order to address this issue, we augumented the dataset by generating multiple noise levels for each pair of spectograms, but this increased the training time by a factor up to 100, which could not be tested.
-
-\subsubsection{DDIM issues}
-
+\subsubsection{DDIM Issues}
+\textit{Theo S.}\\
 This may be the reason why the resolution of the generated image is not better with increasing DDIM time steps. DDIM uses an iterative denoising process where each iteration improves the resolution of the previous iteration. If the model is not trained to denoise at all noise levels, this will result in the same low quality output for all generated images.
 
 

@@ -1,16 +1,17 @@
 \section{Introduction}
 
 \subsection{Background}
+\textit{Theo S.}\\
 Music style transfer involves altering the style of a musical piece, 
 such as changing the instrument its played with, 
 while preserving original characteristics like melody or rhythm.
 This could be done by relying on rule-based systems, 
-by e\.g\. modifying the instruments in an MIDI file inside a music production software, 
+by e\.g\. modifying the instruments in a MIDI file inside a music production software, 
 or by leveraging machine learning techniques for symbolic music genre transfer, like Brunner et al\. with MIDI-VAE or CycleGAN~\cite{Brunner2018MIDIVAEMD, Brunner2018SymbolicMG}.
-However these approaches are limited to leveraging midi files with the latter also requiring an exceptional amount of compute to train.
+However, these approaches are limited to leveraging MIDI files with the latter also requiring an exceptional amount of compute to train.
 
 
-However capturing the essence of a musical piece and transferring it to another one can involve much more than just 
+However, capturing the essence of a musical piece and transferring it to another one can involve much more than just 
 changing what instrument is used to play the notes, if even applicable.
 
 Recent advancements in machine learning have introduced approaches that work very well for the same corresponding task in 
@@ -29,6 +30,7 @@ In this project, we want to implement a version of the approach proposed in the 
 However, since their code is not publicly available, we will develop our own implementation and hope to achieve similar results.
 
 \subsection{Problem Statement \& Goals}
+\textit{Theo S.}\\
 The goal of this project is to implement a music style transfer architecture based on the principles of Latent Diffusion Models (LDMs).
 We should be able to take a music sample and change its instrument while preserving its other characteristics.
 This involves several challenges, including:
@@ -52,6 +54,6 @@ This involves several challenges, including:
       We want to generate music samples that still sound okay and let us hear the characteristics behind the song and instruments.
       We plan to do most of the evacuation concerning the quality of the generated samples by just listening to them.
       However since we are very restricted in terms of computing resources, we are totally fine with not archiving the highest quality.
-      If we can generate samples that sound okay and are able to transfer the style of the music, this is already a success and validate our approach
+      If we can generate samples that sound okay and are able to transfer the style of the music, this is already a success and validate our approach.
       With more data, larger models and more training, someone with more resources could then probably achieve better results.
 \end{itemize}

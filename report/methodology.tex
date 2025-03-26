@@ -1,8 +1,9 @@
 \section{Methodology}
-
+\textit{Andrei P.}\\
 In this section, we will describe the methodology used to implement the proposed method. We will describe our approach to the architecture, the main components and the training process.
 
 \subsection{Architecture Overview}
+\textit{Andrei P.}\\
 We tried to stay as close to the original paper as possible in terms of architecture, but the paper did not provide a detailed description. The main components of our model are:
 
 \begin{table}[h]
@@ -35,6 +36,7 @@ VGGishFeatureLoss & Pretrained VGGish model to extract features from the spectro
 \noindent We will now briefly describe each of the components.
 
 \subsubsection{Spectrogram Encoder and decoder}
+\textit{Andrei P.}\\
 The encoder compresses the input spectrogram into a latent space using a series of convolutional layers, which allows for unrestricted input size:
 \begin{lstlisting}[basicstyle=\tiny]
 class SpectrogramEncoder(nn.Module):
@@ -70,7 +72,8 @@ class SpectrogramDecoder(nn.Module):
 \noindent Both the encoder and decoder need to be pretrained on the spectrograms to be able to reconstruct the original audio. During the training process, we froze the encoder weights to prevent them from being updated, while leaving the decoder weights trainable. We describe this process in the experiments section.
 
 \subsubsection{Style Encoder}
-The style encoder processes style spectrograms to extract multi-resolution embeddings. Activation maps from different convolutional layers are extracted and used as conditioning mechianisms in the UNet, thorugh the Cross Attention mechanism.
+\textit{Andrei P.}\\
+The style encoder processes style spectrograms to extract multi-resolution embeddings. Activation maps from different convolutional layers are extracted and used as conditioning mechanisms in the UNet, through the Cross Attention mechanism.
 
 \begin{lstlisting}[basicstyle=\tiny]
 class StyleEncoder(nn.Module):
@@ -84,6 +87,7 @@ class StyleEncoder(nn.Module):
 \end{lstlisting}
 
 \subsubsection{UNet}
+\textit{Andrei P.}\\
 The UNet is a standard denoising diffusion model, which is used to denoise the latent representation of the spectrogram. The UNet is conditioned on the style embeddings extracted by the style encoder using the Cross Attention mechanism. Skip connections are used to improve the training process. We use a sinusoidal position embedding to encode the time step in the UNet.
 
 
@@ -126,7 +130,7 @@ class UNet(nn.Module):
 \end{lstlisting}
 
 \subsubsection{ForwardDiffusion}
-
+\textit{Andrei P.}\\
 The forward diffusion process gradually adds Gaussian noise to the input data over a fixed number of timesteps. At each timestep $t$, the process is defined by:
 
 \begin{equation}
@@ -155,6 +159,7 @@ The reverse process then learns to gradually denoise the data by predicting the 
 
 \subsubsection{DDIM Sampling}
 \label{sec:ddim_sampling}
+\textit{Theo S.}\\
 % \begin{equation}
 %     q(z_t|z_{t-1}) = \mathcal{N}(z_t; \sqrt{1-\beta_t}\,z_{t-1},\, \beta_t\mathbf{I}),
 % \end{equation}
@@ -166,7 +171,6 @@ The reverse process then learns to gradually denoise the data by predicting the 
 % \begin{equation}
 %     z_t = \sqrt{\bar{\alpha}_t}\,z_0 + \sqrt{1-\bar{\alpha}_t}\,\epsilon, \quad \epsilon \sim \mathcal{N}(0, \mathbf{I}).
 % \end{equation}
-
 This process was originally introduced by Song et al.~\cite{song2021denoising}. 
 Opposed to the forward diffusion process, which gradually adds Gaussian noise to the input data, in DDIM sampling, our goal is to reverse this process. 
 \\\\
@@ -193,7 +197,7 @@ Because as the noise level decreases in later stages, the task becomes easier, o
 
 
 \subsubsection{Sinusoidal Position Embeddings}
-
+\textit{Andrei P.}\\
 The diffusion process requires knowledge of the timestep $t$ to properly denoise the data. However, neural networks work best with continuous representations rather than discrete timestep indices. Therefore, we use sinusoidal position embeddings to encode the timestep information in a way that the network can effectively utilize.
 
 The sinusoidal encoding transforms a scalar timestep $t$ into a high-dimensional vector using sine and cosine functions at different frequencies:
@@ -230,11 +234,12 @@ self.time_mlp = nn.Sequential(
 
 
 \subsubsection{VGGishFeatureLoss}
+\textit{Andrei P.}\\
 The VGGishFeatureLoss is a loss function that uses the pretrained VGGish\footnote{\url{https://github.com/harritaylor/torchvggish}} model to extract features from the spectrogram and the reconstructed spectrogram, and then computes the mean squared error at different resolutions between the two. 
 
 
 \subsection{Training Process}
-
+\textit{Andrei P.}\\
 Our training objective is a weighted sum of a reconstruction loss, a style transfer loss and a diffusion loss. More formally, the training objective is:
 
 \begin{equation}

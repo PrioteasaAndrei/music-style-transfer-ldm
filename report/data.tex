@@ -1,12 +1,14 @@
 \section{Dataset Creation and Processing}
-
-The dataset can be generated using the following commands:
+\textit{Theo S.}\\
+The dataset can be generated using the following two commands:
 
 \begin{lstlisting}[caption={Generating the dataset}]
-python 
+python data/yt_audio_downloader.py
+python data/build_dataset.py
 \end{lstlisting}
 
 \subsection{Data Selection}
+\textit{Theo S.}\\
 For this project, we focused on isolated instrument recordings, so recordings where only i.e. a piano or only a guitar are played.
 The idea behind this is to maintain simplicity and clarity in our audio style transfer tasks and to potentially decrease the complexity of the task for the model.
 This approach allows us to focus on learning the characteristics of individual instruments without the interference of other sounds or instruments.
@@ -15,6 +17,7 @@ For now we selected the following instruments for our dataset: Piano, Acoustic G
 
 \subsection{Data Acquisition}
 \label{sec:data_acquisition}
+\textit{Theo S.}\\
 We developed an automated pipeline for downloading instrument recordings from \texttt{YouTube} using the \texttt{yt-dlp} library~\cite{youtube,yt-dlp}.
 The yt-dlp additionally acts as a wrapper for \texttt{FFmpeg}~\cite{ffmpeg} for certain audio conversion and processing tasks, providing easy access to its functionality.
 \\\\
@@ -83,7 +86,7 @@ downloaded_files = downloader.download_from_csv("data/youtube_urls.csv")
 \end{lstlisting}
 
 \subsection{Audio Preprocessing and Spectrogram Generation}
-
+\textit{Theo S.}\\
 Raw audio signals need to be transformed into a representation suitable for our models.
 For this we convert the audio signals into spectrograms, which are visual representations of the frequency spectrum of audio signals over time.
 Since the architecture we are using is most known for image generation, we think this is a good approach to make sure our model can understand the data.
@@ -175,7 +178,7 @@ def mel_spectrogram_to_grayscale_image(self, spectrogram, max_db=80):
 
 This conversion process includes:
 \begin{itemize}
-    \item Since log-scaled  mel-spectrogram values typically range from -80 dB to 0 dB, adding an 80 dB offset shifts the values to the range [0, 80]. This step converts negative values to positive values, which is necessary for image representation.
+    \item Since log-scaled mel-spectrogram values typically range from -80 dB to 0 dB, adding an 80 dB offset shifts the values to the range [0, 80]. This step converts negative values to positive values, which is necessary for image representation.
     \item The shifted values are then scaled from the [0, 80] range to the standard [0, 255] range required for 8-bit grayscale images.
     \item After scaling, any values outside the [0, 255] range are clipped to ensure that they stay within valid image intensity bounds.
     \item To ensure each value is rounded to the nearest integer, a rounding step (by adding 0.5) is applied before conversion.
@@ -236,17 +239,18 @@ def build_dataset_folder_structure(
 
 
 For this we first split each recording into 3-second chunks. This allows us to on the one hand create more samples in our dataset, but also keep the later training time reasonable.
-Since right now our dataset consists of very long recordings, one per instrument, we additionally can archive an equal split per instrument lable by limiting the maximum duration of each recording by the length of the shortest recording.
+Since right now our dataset consists of very long recordings, one per instrument, we additionally can archive an equal split per instrument label by limiting the maximum duration of each recording by the length of the shortest recording.
 This is 30 minutes in our case.
 We hereby ensure that no instrument is over- or underrepresented in our dataset.
-As mentioned before, we decide to use 128 mel frequency bands for our mel-spectrograms.
-The chunking process is done by iterating over the audio signal in steps of 3 seconds, and for each chunk, we generate a mel spectrogram and convert it to an image.
+As mentioned before, we decide to use 128 mel-frequency bands for our mel-spectrograms.
+The chunking process is done by iterating over the audio signal in steps of 3 seconds, and for each chunk, we generate a mel-spectrogram and convert it to an image.
 The final dataset structure mirrors our original audio organization, with each instrument having its own folder of 3 second spectrogram images.
 
 
 
 
 \subsection{PyTorch Dataset Creation}
+\textit{Theo S.}\\
 To later enable easy usage and compatibility in training throughout the pytorch training process, we created a custom dataset class that handles loading and processing of our images.
 
 \paragraph{SpectrogramDataset}
@@ -289,7 +293,7 @@ This approach leverages the folder structure we established during the preproces
 The transforms in \texttt{\_get\_transform()} ensure consistency across all images while preserving their essential characteristics. 
 
 Transform steps include cropping the images to 128x128 pixels. 
-This is necessary because, while the original images have a y-dimension of 128 (matching the number of mel frequency bands), 
+This is necessary because, while the original images have a y-dimension of 128 (matching the number of mel-frequency bands), 
 the x-dimension is 130 pixels due to an interplay of multiple factors during the processing pipeline:
 \\
 
