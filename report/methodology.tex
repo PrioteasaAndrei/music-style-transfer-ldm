@@ -230,7 +230,7 @@ self.time_mlp = nn.Sequential(
 
 
 \subsubsection{VGGishFeatureLoss}
-The VGGishFeatureLoss is a loss function that uses the pretrained VGGish model to extract features from the spectrogram and the reconstructed spectrogram, and then computes the mean squared error at different resolutions between the two. CITE PAPER HERE
+The VGGishFeatureLoss is a loss function that uses the pretrained VGGish\footnote{\url{https://github.com/harritaylor/torchvggish}} model to extract features from the spectrogram and the reconstructed spectrogram, and then computes the mean squared error at different resolutions between the two. 
 
 
 \subsection{Training Process}
@@ -251,11 +251,11 @@ Our training objective is a weighted sum of a reconstruction loss, a style trans
     \end{split}
 \end{equation}
 
-\noindent where $\phi_l$ represents the feature maps at layer $l$ of the pretrained feature extractor network (VGGish\footnote{\url{https://github.com/harritaylor/torchvggish}} or LPIPS). These feature maps capture increasingly abstract representations of the input spectrogram at different scales, from low-level features like edges in early layers to high-level semantic features in deeper layers.
+\noindent where $\phi_l$ represents the feature maps at layer $l$ of the pretrained feature extractor network (VGGish or LPIPS). These feature maps capture increasingly abstract representations of the input spectrogram at different scales, from low-level features like edges in early layers to high-level semantic features in deeper layers.
 
 \vspace{1em}
 
-\noindent For the diffusion loss, we use the standard denoising diffusion loss which measures how well the model predicts noise at each timestep:
+\noindent For the diffusion loss, we use the standard denoising diffusion loss which measures how well the model predicts noise at each timestep in the latent space:
 % Diffusion Loss - measures how well the model predicts noise at each timestep
 \begin{equation}
 L_{diffusion}(\epsilon_\theta, \epsilon, t) = \frac{1}{n}\sum_{i=1}^{n}(\epsilon_{\theta,i}(z_t, t) - \epsilon_i)^2

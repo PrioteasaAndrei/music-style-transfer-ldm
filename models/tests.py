@@ -1208,6 +1208,83 @@ def test_ldm_forward_function():
     print(f'Saved generated audio to {gen_audio_path}')
     
 
+def test_ldm_forward_function_no_content():
+    """
+    Test the forward function of the LDM model.
+    """
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    latent_dim = config['latent_dim_encoder']
+    
+    # Initialize LDM model
+    ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
+              pretraind_filename='ldm.pth', load_full_model=True).to(device)
+    
+    # Get x and style from the dataset
+    _, test_loader = prepare_dataset(config)
+    images, labels = next(iter(test_loader))
+    content_image = images[0]  # Get first image as content
+    style_image = images[1]    # Get second image as style
+    # random gaussian noise in the shape of content_image
+    content_image = torch.randn_like(content_image)
+    print(f"Content image shape: {content_image.shape}, Label: {labels[0]}")
+    print(f"Style image shape: {style_image.shape}, Label: {labels[1]}")
+
+    # Add batch dimension and move to device
+    content_image = content_image.unsqueeze(0).to(device)
+    style_image = style_image.unsqueeze(0).to(device)
+
+    # initialize t
+    t = torch.full((1,), ldm.num_timesteps-1, dtype=torch.long, device=content_image.device)
+    # t = torch.full((1,), 100, dtype=torch.long, device=content_image.device)
+
+
+    # Run forward function
+    with torch.no_grad():
+        output = ldm.forward(content_image, style_image, t)
+    
+    z_t = output['z_t']
+    noise = output['noise']
+    noise_pred = output['noise_pred']
+    reconstructed = output['reconstructed']
+
+    # Save output as plot together with original content and style images
+    fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+    plt.tight_layout()
+    axes[0].imshow(content_image.squeeze().detach().cpu(), cmap='gray')
+    axes[0].set_title(f'Content\n{labels[0]}')
+    axes[0].axis('off')
+
+    axes[1].imshow(style_image.squeeze().detach().cpu(), cmap='gray')
+    axes[1].set_title(f'Style\n{labels[1]}')
+    axes[1].axis('off')
+
+    axes[2].imshow(reconstructed.squeeze().detach().cpu(), cmap='gray')
+    axes[2].set_title('LDM Output')
+    axes[2].axis('off')
+
+    with torch.no_grad():
+        # Decode z_t to get the spectrogram
+        decoded_z_t = ldm.decoder(z_t)
+
+    axes[3].imshow(decoded_z_t.squeeze().detach().cpu(), cmap='gray')
+    axes[3].set_title('Decoded z_t')
+    axes[3].axis('off')
+
+
+    plt.tight_layout()
+    plt.savefig('tests/downloads/test_ldm_forward_function_no_content_output.png')
+    plt.close()
+    print(f'Saved LDM forward function output to tests/downloads/test_ldm_forward_function_no_content_output.png')
+    print("LDM forward function test complete.")
+    # Save audio from output
+    proc = AudioPreprocessor()
+    gen_audio_path = 'tests/downloads/test_ldm_forward_function_no_content_output.wav'
+    gen_pil = transforms.ToPILImage()(reconstructed.squeeze().detach().cpu())
+    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+    gen_pil, sr=22050, im_height=content_image.shape[2], im_width=content_image.shape[3])
+    sf.write(gen_audio_path, np.int16(gen_audio * 32767), 22050)
+    print(f'Saved generated audio to {gen_audio_path}')
+    
 
 if __name__ == "__main__":
     # test_ddim_deterministic()
@@ -1234,8 +1311,9 @@ if __name__ == "__main__":
     # test_vggish_loss()
     # test_ddim_wrapper()
 
-    test_ddim_generation()
+    # test_ddim_generation()
     # test_ddim_generation_content_aware()
     # test_ldm_forward_function()
+    test_ldm_forward_function_no_content()
 
     print("All tests passed!")

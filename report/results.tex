@@ -109,51 +109,103 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 
 \noindent It may be exactly because of this reason that the model is not able to learn the style characteristics and generate good results.
 
-\subsection{Style Generation Example}
+
+\subsection{LDM Forward Pass}
+First we look at the output of the forward pass of the LDM model.
+Figure~\ref{fig:ldm_forward_pass} visualizes the input spectrograms and the generated output spectrogram.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/test_ldm_forward_function_output_200epochs.png}
+    \caption{LDM forward pass results.
+    The figure displays the spectrograms used as content and style input as well the generated output spectrogram. 
+    The right most column shows the initial content spectrogram with its applied noise (t=200), after we pass it through the decoder. 
+    The LDM model was trained for 200 epochs.}
+    \label{fig:ldm_forward_pass}
+\end{figure}
+
+When comparing the decoded \(z_t\), the LDM generated output, and the content spectrogram, we observe that while the decoded \(z_t\) looks very noisy and not very structured,
+the LDM seems to be able to recover from that. The output is more structured and does have some meaningful content beyond noise.
+This indicates that the LDM did learn ... \textcolor{red}{TODO:???? Finish this sentence}\\
+
+In this and other examples we looked at, it is however hard to tell if the LDM is able to actually transfer the style characteristics of the style spectrogram to the generated output.
+To get the audio output of the generated output spectrogram, we then reverse our preprocessing steps with librosa to get from the generated output spectrogram to an audio output.
+Listening to the resulting audio, 
+we find that it does not have meaningful content and sounds very unnatural and noise-like with, if any, very slight rhythmic structure.
+Because the output looks still very unrefined and noisy this is expected.
+\\\\
+Next we look at what happens when generating without a content spectrogram as input but instead only random noise.
+Figure~\ref{fig:ldm_forward_pass_random} shows the results of this.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/test_ldm_forward_function_no_content_output_200ep.png}
+    \caption{LDM forward pass results with random noise as input.
+    The figure displays the spectrograms used as content and style input as well the generated output spectrogram. Here the content spectrogram is just random noise.}
+    \label{fig:ldm_forward_pass_random}
+\end{figure}
+The model is able to actually generate something with resemblance to a spectrogram, however the generated output is still very noisy.
+As before the corresponding audio output sounds very unnatural and noise-like.
+
+\subsection{Style Generation Example with DDIM}
 For the generation of the style-infused spectrograms, we utilize the ddim-sampling method as described in~\ref{sec:ddim_sampling}.
-For generation only we do not use an content-spectrogram but instead a random noise tensor and style-embeddings from another spectrogram as starting point for the sampling process.
-We then feed the generated spectrograms through the decoder to obtain the spectrograms and in addition reverse our preprocessing steps with librosa to get the final audio output.
+By using ddim-sampling, we hope to archive better and less noisy results compared to the plain forward pass of the LDM.
+
+For generation only, we again do not use an content-spectrogram but instead a random noise tensor and style-embeddings from another spectrogram as starting point for the sampling process.
+We then feed the generated spectrograms through the decoder to obtain the output spectrogram.
 
 Results are shown in Figure~\ref{fig:style_generation_results}.
 The resulting spectrograms show our models inability to actually generate and transfer the style characteristics in its current state.
 Increasing the number of sampling timesteps in the ddim-sampling further, did not yield any improvements.
 Also while testing multiple different input images and random seeds, the resulting spectrograms changed drastically, 
-however the quality of them remained comparable to the ones in Figure~\ref{fig:style_generation_results}.
+however the quality, and style-transfer capabilities, of them remained comparable to the ones in Figure~\ref{fig:style_generation_results}.
+
+Looking at how increasing the number of sampling timesteps in the ddim-sampling process affects the generated spectrograms,
+we observe that it does not seem to have a big impact on the generated output.
+The generated spectrograms do not seem to improve in quality or detail, but rather just change in their overall structure.
+This indicates problems with our ddim-sampling process or the model itself.
 
 When listening to the resulting audio, it did have near to no meaningful content or structure and sounded very unnatural and noise-like.
 Representing near to no musical content. This however would be expected from the generated spectrograms in this state.
-\\\\
-The generated spectrograms however, already seem to follow some meaningful structure, indicating that further refinement or fixes in our 
-architecture, training, and sampling  process could yield better results. They however seem overly sharp and noisy.
+% \\\\
+% The generated spectrograms however, already seem to follow some meaningful structure, indicating that further refinement or fixes in our 
+% architecture, training, and sampling  process could yield better results. They however still lack detail and look very noisy noisy.
+
+
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=\textwidth]{figures/test_ddimgen_ldm300epochs_generated_mel_spectrograms_comparison.png}
-    \caption{Style generation results. The figure displays different number of timesteps used in the ddim sampling process. 
-    The LDM model was trained for 300 epochs.}
+    \includegraphics[width=\textwidth]{figures/generated_mel_spectrograms_comparison_200ep.png}
+    \caption{Style generation results. 
+    The figure displays the used spectrogram for style transfer and the spectrograms generated with different number of timesteps used in the ddim-sampling process. 
+    The LDM model was trained for 200 epochs.}
     \label{fig:style_generation_results}
 \end{figure}
 
-\subsection{Style Transfer Example}
-Next, we also tested the style transfer capabilities of our model. Hoping that maybe some of the lacking generation capabilities
+\subsection{Style Transfer Example with DDIM}
+Next, we also tested the style transfer capabilities of our model using the ddim-sampling method. Hoping that maybe some of the lacking generation capabilities
 come from the fact that we are not using a content spectrogram as input but only random noise.
 
-Because of the before mentioned issues, we tried to refine our sampling process, however this did not yield any real improvements. 
-However the shown results in Figure~\ref{fig:style_transfer_results} are generated with an slightly modified sampling process compared to the one in the generation example.
-This time we instead of using random noise as initial \(z_t\), we used a content spectrogram as input and a style spectrogram as conditioning.
+Results are shown in Figure~\ref{fig:style_transfer_results}.
+For this we again use a content spectrogram as input and a style spectrogram as conditioning.
 Results are shown in Figure~\ref{fig:style_transfer_results}.
 \textcolor{red}{TODO: Add figure} 
 
-% \begin{figure}[h]
-%     \centering
-%     \includegraphics[width=\textwidth]{figures/test_ddimtransfer_ldm300epochs_generated_mel_spectrograms_comparison.png}
-%     \caption{Style transfer results. The figure displays different number of timesteps used in the style transfer process with ddim-sampling. 
-%     The LDM model was trained for 300 epochs.}
-%     \label{fig:style_transfer_results}
-% \end{figure}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/content_aware_mel_spectrograms_comparison_200ep.png}
+    \caption{Style transfer results. The first row shows the content and style spectrograms used as input. 
+    For visualization we added the initial content spectrogram with its applied noise (t=200) from which we start the sampling process in the top right.
+    The second row shows spectrograms with different number of timesteps used in the style transfer process with ddim-sampling. 
+    The LDM model was trained for 200 epochs.}
+    \label{fig:style_transfer_results}
+\end{figure}
 
-Again, the resulting spectrograms, and the converted audio, follow the same problems as the generated spectrograms.
+While we are again not sure if the actual number of timesteps used in the sampling process even has an impact on the generated output, now the
+generated spectrograms have a strong resemblance to the content spectrogram. Comparing the initial \(z_t\) (top right) with the generated outputs (bottom row),
+we see a big change from the noisy input to the generated output.
 
+This time, when listening to the resulting audio, we find that while it is still 
+very noisy and has very bad quality, it does already have some meaningful content, structure and resemblance to music.
 
 \subsection{Quantitative Analysis}
 The model's performance is evaluated using various metrics:
