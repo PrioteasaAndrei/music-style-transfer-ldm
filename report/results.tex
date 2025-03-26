@@ -124,15 +124,9 @@ Figure~\ref{fig:ldm_forward_pass} visualizes the input spectrograms and the gene
     \label{fig:ldm_forward_pass}
 \end{figure}
 
-When comparing the decoded \(z_t\), the LDM generated output, and the content spectrogram, we observe that while the decoded \(z_t\) looks very noisy and not very structured,
-the LDM seems to be able to recover from that. The output is more structured and does have some meaningful content beyond noise.
-This indicates that the LDM did learn ... \textcolor{red}{TODO:???? Finish this sentence}\\
+\noindent When comparing the decoded \(z_t\), the LDM generated output, and the content spectrogram, we observe that while the decoded \(z_t\) looks noisy, the LDM seems to be able to capture some level of structure. This is an indication that the LDM did learn some style and reconstruction characteristics. Both insuficient training and a problematic loss convergence for the style encoder make a conclusive assesment of the style transfer capabilities of the LDM difficult. To get the audio output of the generated output spectrogram, we then reverse our preprocessing steps with librosa to get from the generated output spectrogram to an audio output.
 
-In this and other examples we looked at, it is however hard to tell if the LDM is able to actually transfer the style characteristics of the style spectrogram to the generated output.
-To get the audio output of the generated output spectrogram, we then reverse our preprocessing steps with librosa to get from the generated output spectrogram to an audio output.
-Listening to the resulting audio, 
-we find that it does not have meaningful content and sounds very unnatural and noise-like with, if any, very slight rhythmic structure.
-Because the output looks still very unrefined and noisy this is expected.
+Listening to the resulting audio, we find that it does not have meaningful content and sounds very unnatural and noise-like with, if any, very slight rhythmic structure. Because the output looks still very unrefined and noisy this is expected.
 \\\\
 Next we look at what happens when generating without a content spectrogram as input but instead only random noise.
 Figure~\ref{fig:ldm_forward_pass_random} shows the results of this.
@@ -207,64 +201,23 @@ we see a big change from the noisy input to the generated output.
 This time, when listening to the resulting audio, we find that while it is still 
 very noisy and has very bad quality, it does already have some meaningful content, structure and resemblance to music.
 
-\subsection{Quantitative Analysis}
-The model's performance is evaluated using various metrics:
 
-\begin{table}[h]
-\centering
-\begin{tabular}{lcc}
-\toprule
-\textbf{Metric} & \textbf{Training} & \textbf{Validation} \\
-\midrule
-MSE Loss & 0.008 & 0.009 \\
-Perceptual Loss & 0.15 & 0.17 \\
-Style Loss & 0.12 & 0.14 \\
-KL Loss & 0.005 & 0.006 \\
-\bottomrule
-\end{tabular}
-\caption{Training and validation metrics}
-\label{tab:metrics}
-\end{table}
+\subsection{Discussion and Analysis}
 
-\begin{itemize}
-    \item \textbf{Reconstruction Quality}:
-    \begin{itemize}
-        \item Average MSE: 0.008 (training), 0.009 (validation)
-        \item Perceptual loss: 0.15 (training), 0.17 (validation)
-        \item KL divergence: 0.005 (training), 0.006 (validation)
-    \end{itemize}
-    
-    \item \textbf{Style Transfer Performance}:
-    \begin{itemize}
-        \item Style loss: 0.12 (training), 0.14 (validation)
-        \item Content preservation score: 0.85
-        \item Style accuracy: 0.82
-    \end{itemize}
-    
-    \item \textbf{Computational Efficiency}:
-    \begin{itemize}
-        \item Training time: 24 hours
-        \item Inference time: 0.5 seconds per spectrogram
-        \item Memory usage: 8GB GPU memory
-    \end{itemize}
-\end{itemize}
+Since our architecture was specifically designed to allow for quick training (using only a single RTX 3060 Ti GPU) and further research shows that significantly larger training time is needed (the original authors use 3 RTX 3090s), we cannot conclude if the poor results in our reconstruction or style transfer are due to the restricted architecture of a mistake in the training process. In this section we will propose our interpretation of the results and discuss possible causes.
 
-\subsection{Comparison with Baselines}
-The model's performance is compared with traditional methods:
+\subsubsection{Diffusion restricitons}
 
-\begin{itemize}
-    \item \textbf{Advantages}:
-    \begin{itemize}
-        \item Better content preservation
-        \item More natural style transfer
-        \item Faster inference time
-        \item Lower memory requirements
-    \end{itemize}
-    
-    \item \textbf{Limitations}:
-    \begin{itemize}
-        \item Requires paired training data
-        \item Sensitive to style spectrogram quality
-        \item Limited to spectrogram-based processing
-    \end{itemize}
-\end{itemize} 
+Our dataset consists of pairs of spectrograms, one for the content and one for the style. For each inidivudal pair we generate a random noise threshold which will be passed to the forward difusion model. Because of the limited training resources, we only sample a single noise threshold for each pair during training. Ideally, with enough data, all possible levels of noise (per spectogram pair) should be encountered during training (both low levels as well as high levels) which would ensure that the model learns to denoise at any noise level. But because of the limited length of the dataset (only 15000 samples) there may be the case that only a small subset of possible noise thresholds (which may as well be too big) are used during the denoising process. This would be a possible cause for poor results during the DDIM generation. In order to address this issue, we augumented the dataset by generating multiple noise levels for each pair of spectograms, but this increased the training time by a factor up to 100, which could not be tested.
+
+\subsubsection{DDIM issues}
+
+This may be the reason why the resolution of the generated image is not better with increasing DDIM time steps. DDIM uses an iterative denoising process where each iteration improves the resolution of the previous iteration. If the model is not trained to denoise at all noise levels, this will result in the same low quality output for all generated images.
+
+
+
+
+
+
+
+
