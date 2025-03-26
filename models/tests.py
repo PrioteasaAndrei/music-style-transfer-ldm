@@ -807,32 +807,37 @@ def test_ddim_generation():
     with torch.no_grad():
         decoded_50 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=50, eta=0)
         decoded_100 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=100, eta=0)
-        decoded_250 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=250, eta=0)
+        decoded_250 = ldm.style_ddim_sample_wrapper(z_shape, style_image, timesteps=200, eta=0)
     
     print(f"Decoded shape: {decoded_50.shape}")
     print(f"Decoded shape: {decoded_100.shape}")
     print(f"Decoded shape: {decoded_250.shape}")
-    
+
     # First create folder if it doesn't exist
     Path('tests/downloads/test_ddim_generation').mkdir(parents=True, exist_ok=True)
 
     # Save picture of mel generated spectrograms
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Plot 50 timesteps
-    axes[0].imshow(decoded_50.squeeze().detach().cpu(), cmap='gray')
-    axes[0].set_title('50 Timesteps')
+    fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+    plt.tight_layout()
+    # Plot original mel spectrogram
+    axes[0].imshow(style_image.squeeze().detach().cpu(), cmap='gray')
+    axes[0].set_title('Style Mel Spectrogram')
     axes[0].axis('off')
-    
-    # Plot 100 timesteps 
-    axes[1].imshow(decoded_100.squeeze().detach().cpu(), cmap='gray')
-    axes[1].set_title('100 Timesteps')
+
+    # Plot 50 timesteps
+    axes[1].imshow(decoded_50.squeeze().detach().cpu(), cmap='gray')
+    axes[1].set_title('50 Timesteps')
     axes[1].axis('off')
     
-    # Plot 250 timesteps
-    axes[2].imshow(decoded_250.squeeze().detach().cpu(), cmap='gray')
-    axes[2].set_title('250 Timesteps')
+    # Plot 100 timesteps 
+    axes[2].imshow(decoded_100.squeeze().detach().cpu(), cmap='gray')
+    axes[2].set_title('100 Timesteps')
     axes[2].axis('off')
+    
+    # Plot 250 timesteps
+    axes[3].imshow(decoded_250.squeeze().detach().cpu(), cmap='gray')
+    axes[3].set_title('200 Timesteps')
+    axes[3].axis('off')
     
     plt.tight_layout()
     plt.savefig('tests/downloads/test_ddim_generation/generated_mel_spectrograms_comparison.png')
@@ -1060,9 +1065,9 @@ def test_ddim_generation_content_aware():
               
     # Run content-aware style-conditioned DDIM sampling
     with torch.no_grad():
-        decoded_50 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=50, eta=0)
-        decoded_100 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=100, eta=0)
-        decoded_250 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=250, eta=0)
+        decoded_50, z_t_decoded_50 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=50, eta=0)
+        decoded_100, z_t_decoded_100 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=100, eta=0)
+        decoded_250, z_t_decoded_250 = ldm.content_style_transfer_wrapper(content_image, style_image, num_timesteps=200, eta=0)
     
     print(f"Decoded shape: {decoded_50.shape}")
     print(f"Decoded shape: {decoded_100.shape}")
@@ -1093,8 +1098,14 @@ def test_ddim_generation_content_aware():
     axes[1,1].axis('off')
     
     axes[1,2].imshow(decoded_250.squeeze().detach().cpu(), cmap='gray')
-    axes[1,2].set_title('250 Timesteps')
+    axes[1,2].set_title('200 Timesteps')
     axes[1,2].axis('off')
+    # 
+    # add z_t_decoded_250 to top right    
+    axes[0,2].imshow(z_t_decoded_250.squeeze().detach().cpu(), cmap='gray')
+    axes[0,2].set_title('z_200 Timesteps')
+    axes[0,2].axis('off')
+    #
     
     plt.tight_layout()
     plt.savefig('tests/downloads/test_ddim_generation/content_aware_mel_spectrograms_comparison.png')
@@ -1119,6 +1130,83 @@ def test_ddim_generation_content_aware():
         gen_pil, sr=22050, im_height=content_image.shape[2], im_width=content_image.shape[3])
     sf.write(gen_audio_path, np.int16(gen_audio * 32767), 22050)
     print(f'Saved generated audio to {gen_audio_path}')
+
+
+def test_ldm_forward_function():
+    """
+    Test the forward function of the LDM model.
+    """
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    latent_dim = config['latent_dim_encoder']
+    
+    # Initialize LDM model
+    ldm = LDM(latent_dim=latent_dim, pretrained_path='models/pretrained/', 
+              pretraind_filename='ldm.pth', load_full_model=True).to(device)
+    
+    # Get x and style from the dataset
+    _, test_loader = prepare_dataset(config)
+    images, labels = next(iter(test_loader))
+    content_image = images[0]  # Get first image as content
+    style_image = images[1]    # Get second image as style
+    print(f"Content image shape: {content_image.shape}, Label: {labels[0]}")
+    print(f"Style image shape: {style_image.shape}, Label: {labels[1]}")
+
+    # Add batch dimension and move to device
+    content_image = content_image.unsqueeze(0).to(device)
+    style_image = style_image.unsqueeze(0).to(device)
+
+    # initialize t
+    t = torch.full((1,), ldm.num_timesteps-1, dtype=torch.long, device=content_image.device)
+    # t = torch.full((1,), 100, dtype=torch.long, device=content_image.device)
+
+
+    # Run forward function
+    with torch.no_grad():
+        output = ldm.forward(content_image, style_image, t)
+    
+    z_t = output['z_t']
+    noise = output['noise']
+    noise_pred = output['noise_pred']
+    reconstructed = output['reconstructed']
+
+    # Save output as plot together with original content and style images
+    fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+    plt.tight_layout()
+    axes[0].imshow(content_image.squeeze().detach().cpu(), cmap='gray')
+    axes[0].set_title(f'Content\n{labels[0]}')
+    axes[0].axis('off')
+
+    axes[1].imshow(style_image.squeeze().detach().cpu(), cmap='gray')
+    axes[1].set_title(f'Style\n{labels[1]}')
+    axes[1].axis('off')
+
+    axes[2].imshow(reconstructed.squeeze().detach().cpu(), cmap='gray')
+    axes[2].set_title('LDM Output')
+    axes[2].axis('off')
+
+    with torch.no_grad():
+        # Decode z_t to get the spectrogram
+        decoded_z_t = ldm.decoder(z_t)
+
+    axes[3].imshow(decoded_z_t.squeeze().detach().cpu(), cmap='gray')
+    axes[3].set_title('Decoded z_t')
+    axes[3].axis('off')
+
+
+    plt.tight_layout()
+    plt.savefig('tests/downloads/test_ldm_forward_function_output.png')
+    plt.close()
+    print(f'Saved LDM forward function output to tests/downloads/test_ldm_forward_function_output.png')
+    print("LDM forward function test complete.")
+    # Save audio from output
+    proc = AudioPreprocessor()
+    gen_audio_path = 'tests/downloads/test_ldm_forward_function_output.wav'
+    gen_pil = transforms.ToPILImage()(reconstructed.squeeze().detach().cpu())
+    gen_audio = proc.grayscale_mel_spectogram_image_to_audio(
+    gen_pil, sr=22050, im_height=content_image.shape[2], im_width=content_image.shape[3])
+    sf.write(gen_audio_path, np.int16(gen_audio * 32767), 22050)
+    print(f'Saved generated audio to {gen_audio_path}')
+    
 
 
 if __name__ == "__main__":
@@ -1146,7 +1234,8 @@ if __name__ == "__main__":
     # test_vggish_loss()
     # test_ddim_wrapper()
 
-    # test_ddim_generation()
-    test_ddim_generation_content_aware()
+    test_ddim_generation()
+    # test_ddim_generation_content_aware()
+    # test_ldm_forward_function()
 
     print("All tests passed!")

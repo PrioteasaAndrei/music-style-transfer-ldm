@@ -497,7 +497,8 @@ class LDM(nn.Module):
          # Normalize to [0,1] range
          decoded = (decoded + 1) / 2
          
-         return decoded
+         z_t_decoded = self.decoder(z_t)
+         return decoded, z_t_decoded
 
     def content_style_ddim_sample(self, z_t, style_embedding, timesteps=250, eta=0.0):
         """
