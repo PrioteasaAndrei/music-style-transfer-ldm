@@ -35,7 +35,10 @@
 
 \tableofcontents
 \begin{abstract}
-    TODO
+    \noindent In this project we implement a version of the approach proposed in the paper `Music Style Transfer With Diffusion Model'~\cite{huang2024music}. We experiment with the use of latent diffusion models for musical style transfer, working on grayscale mel-spectrograms (which are a visual representation of audio). We design a Latent Diffusion Model that can transfer the style of one instrument to another, while preserving the original tonal characteristics of the instrument. We collect and preprocess our own dataset from youtube videos, which we make available to the public (see \url{https://github.com/PrioteasaAndrei/music-style-transfer-ldm.git}). 
+    
+    We analyse the model capability of transferring the style of one instrument to another, generating new spectrograms conditioned on a style image, we run experiments on the architecture choices, and we compare the results to the original paper. We conclude that we are able to obtain blurry reconstruction, limited style transfer capabilities, and that the model is able to learn the tonal characteristics of the instrument. We consider that the limited results of our model are due to the limited computational resources available to us and the complexity of the task, further training is required to improve the results. We present a sample of our conditioned generation result at: LINK OF THE SONG
+   
 \end{abstract}
 
 \input{introduction}

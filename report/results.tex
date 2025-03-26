@@ -6,6 +6,8 @@ In this section we will go in detail over the experiments we have conducted to e
 
 The training was conducted on a single NVIDIA GeForce RTX 3060 Ti GPU with 8GB of VRAM. We were bound by this limitation in choosing the model architecture and the hyperparameters, which may have directly resulted in the suboptimal performance of the model and lack of convergence, even if we worked on such a reduced dataset of 128x128 grayscale spectrograms.
 
+\vspace{1em}
+
 \noindent We developed two training scripts, one for the pre-training phase and one for the main training of the LDM. The trained weights of the autoencoder are then loaded into the LDM and frozen.
 
 \begin{lstlisting}[language=bash, basicstyle=\tiny]
@@ -16,12 +18,18 @@ python models/train.py --model autoencoder
 python models/train.py --model ldm
 \end{lstlisting}
 
+\noindent The hyperparameter configuration is available in the \texttt{config.py} file.
+
+
+\subsection{Spectogram resolution}
+
+We experimented with different spectogram resolutions, by manually inspecting the reconstructed audio. We decided on using 128 frequency ranges for the spectrograms, as it provided a good balance between quality and training time and limiting the temporal resolution to 3 seconds.
 
 \subsection{Pre-training the compression model}
 
 The compression model (encoder and decoder) are jointly pre-trained on the training set for 100 epochs using a learning rate of 0.5e-4 with an AdamW optimizer and ReduceLROnPlateau scheduler. The learning rate is reduced by a factor of 0.5 when the validation loss plateaus for 10 epochs, with a minimum learning rate of 1e-6. This adaptive learning rate strategy helps prevent overfitting and ensures stable convergence of the compression model training.
 
-The pre-training phase focuses solely on reconstruction quality, optimizing the encoder-decoder architecture to effectively compress and reconstruct the input spectrograms while preserving essential musical features. This step is crucial as it establishes a strong foundation for the latent space that will later be used by the diffusion model for style transfer. We decide to regularize our latent space using a KL divergence loss, which helps to ensure that the latent space is normally distributed. Both the encoder and decoder are fully convolutional.
+The pre-training phase focuses solely on reconstruction quality, optimizing the encoder-decoder architecture to effectively compress and reconstruct the input spectrograms while preserving essential musical features. This step is crucial as it establishes a strong foundation for the latent space that will later be used by the diffusion model for style transfer. We decide to regularize our latent space using a KL divergence loss, which helps to ensure that the latent space is normally distributed. Both the encoder and decoder are fully convolutional, allowing for dynamic input sizes.
 
 We originally experimented with a latent space dimension of [32,8,8], which we found out to be too limiting in terms of the expressiveness of the latent space. We increased the spatial resolution of the latent space to [32,16,16], which allowed the model to learn a more complex latent space and improve the quality of the style transfer.
 
@@ -101,10 +109,7 @@ LDM (full) & 12,609,985 & 12,609,985 \\
 
 \noindent It may be exactly because of this reason that the model is not able to learn the style characteristics and generate good results.
 
-\textcolor{red}{say somewhere about that we could have used label information in the style loss somehow maybe like in clip but it was too complicated to implement}
-
 \subsection{Style Generation Example}
-Now to testing the full pipeline.
 For the generation of the style-infused spectrograms, we utilize the ddim-sampling method as described in~\ref{sec:ddim_sampling}.
 For generation only we do not use an content-spectrogram but instead a random noise tensor and style-embeddings from another spectrogram as starting point for the sampling process.
 We then feed the generated spectrograms through the decoder to obtain the spectrograms and in addition reverse our preprocessing steps with librosa to get the final audio output.

@@ -235,10 +235,10 @@ The VGGishFeatureLoss is a loss function that uses the pretrained VGGish model t
 
 \subsection{Training Process}
 
-Our training objective is a three part combination of a reconstruction loss, a style transfer loss and a diffusion loss. More formally, the training objective is:
+Our training objective is a weighted sum of a reconstruction loss, a style transfer loss and a diffusion loss. More formally, the training objective is:
 
 \begin{equation}
-    L = L_{reconstruction} + L_{style} + L_{diffusion}
+    L = \lambda_{reconstruction}L_{reconstruction} + \lambda_{style}L_{style} + \lambda_{diffusion}L_{diffusion}
 \end{equation}
 
 \noindent Specifically, the reconstruction loss is defined as:
@@ -251,7 +251,7 @@ Our training objective is a three part combination of a reconstruction loss, a s
     \end{split}
 \end{equation}
 
-\noindent where $\phi_l$ represents the feature maps at layer $l$ of the pretrained feature extractor network (VGGish or LPIPS). These feature maps capture increasingly abstract representations of the input spectrogram at different scales, from low-level features like edges in early layers to high-level semantic features in deeper layers.
+\noindent where $\phi_l$ represents the feature maps at layer $l$ of the pretrained feature extractor network (VGGish\footnote{\url{https://github.com/harritaylor/torchvggish}} or LPIPS). These feature maps capture increasingly abstract representations of the input spectrogram at different scales, from low-level features like edges in early layers to high-level semantic features in deeper layers.
 
 \vspace{1em}
 
